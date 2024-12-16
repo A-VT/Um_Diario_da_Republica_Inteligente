@@ -59,7 +59,7 @@ def process_url(driver, date, url):
         url (str): The URL to fetch and process.
 
     Returns:
-        dict: A dictionary with extracted data, including ID, Title, Diploma, Legislation Type, and Sumario.
+        dict: A dictionary with extracted data, including ID, Title, Diploma, Legislation Type, Sumario, and Fragmento Diploma.
     """
     print(f"Fetching and processing URL: {url}...")
     try:
@@ -93,6 +93,15 @@ def process_url(driver, date, url):
         except Exception as e:
             print(f"Error extracting Sumario: {e}")
 
+        # Extract Fragmento Diploma
+        fragmento_diploma = ""
+        try:
+            fragmento_element = driver.find_element(By.ID, "b21-b4-InjectHTMLWrapper")
+            fragmento_diploma_element = fragmento_element.find_element(By.XPATH, './/div')
+            fragmento_diploma = fragmento_diploma_element.text.strip() if fragmento_diploma_element else ""
+        except Exception as e:
+            print(f"Error extracting Fragmento Diploma: {e}")
+
         # Return extracted data
         print(f"Successfully processed URL: {url}")
         return {
@@ -101,7 +110,8 @@ def process_url(driver, date, url):
             'ID': legislation_id,
             'Titulo': title,
             'LegislationType': legislation_type,
-            'Sumario': sumario
+            'Sumario': sumario,
+            'FragmentoDiploma': fragmento_diploma  # Added Fragmento Diploma key
         }
 
     except Exception as e:
