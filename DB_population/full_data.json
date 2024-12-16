@@ -1,32 +1,29 @@
 [
     {
-        "last_modified_date": "2024-06-25",
+        "data_ultima_modificacao": "2024-06-25",
         "url": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/1985-34475275",
-        "ID": "",
-        "Description": "Estatuto remuneratório dos titulares de cargos políticos"
+        "ID": null,
+        "Titulo": "Estatuto remuneratório dos titulares de cargos políticos",
+        "Diploma": "Estatuto remuneratório dos titulares de cargos políticos",
+        "LegislationType": "Lei",
+        "Sumario": "Estatuto remuneratório dos titulares de cargos políticos"
     },
     {
-        "last_modified_date": "2024-06-25",
+        "data_ultima_modificacao": "2024-06-25",
         "url": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2011-58600752",
-        "ID": "",
-        "Description": "Permite que o jogo EUROMILHÕES passe a ter dois concursos semanais e modifica o funcionamento do fundo que garante o 1.º prémio do Totoloto, alterando os Decret"
+        "ID": null,
+        "Titulo": "Permite que o jogo EUROMILHÕES passe a ter dois concursos semanais",
+        "Diploma": "Permite que o jogo EUROMILHÕES passe a ter dois concursos semanais e modifica o funcionamento do fundo que garante o 1.º prémio do Totoloto, alterando os Decret",
+        "LegislationType": "Decreto-Lei",
+        "Sumario": "Permite que o jogo EUROMILHÕES passe a ter dois concursos semanais e modifica o funcionamento do fundo que garante o 1.º prémio do Totoloto, alterando os Decretos-Leis n.os 210/2004, de 20 de Agosto, 56/2006, de 15 de Março, e 200/2009, de 27 de Agosto"
     },
     {
-        "last_modified_date": "2024-06-25",
+        "data_ultima_modificacao": "2024-06-25",
         "url": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2014-66624400",
-        "ID": "",
-        "Description": "Procede à alteração das normas fiscais ambientais nos sectores da energia e emissões, transportes, água, resíduos, ordenamento do território, florestas e biodiv"
-    },
-    {
-        "last_modified_date": "2024-06-25",
-        "url": "https://diariodarepublica.pt/dr/legislacao-consolidada/portaria/2015-105340342",
-        "ID": "",
-        "Description": "Cria a Bolsa de Iniciativas da Parceria Europeia de Inovação para a produtividade e sustentabilidade agrícolas, abreviadamente designada Bolsa de Iniciativas, n"
-    },
-    {
-        "last_modified_date": "2024-06-25",
-        "url": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2015-107986077",
-        "ID": "",
-        "Description": "No uso da autorização legislativa concedida pela Lei n.º 76/2014, de 11 de novembro, estabelece os termos e as condições para o acesso à profissão e o exercício"
+        "ID": null,
+        "Titulo": "Alteração das normas fiscais ambientais nos sectores da energia e emissões, transportes, água, resíduos, ordenamento do território, florestas e biodiversidade",
+        "Diploma": "Procede à alteração das normas fiscais ambientais nos sectores da energia e emissões, transportes, água, resíduos, ordenamento do território, florestas e biodiv",
+        "LegislationType": "Lei",
+        "Sumario": "Procede à alteração das normas fiscais ambientais nos sectores da energia e emissões, transportes, água, resíduos, ordenamento do território, florestas e biodiversidade, introduzindo ainda um regime de tributação dos sacos de plástico e um regime de incentivo ao abate de veículos em fim de vida, no quadro de uma reforma da fiscalidade ambiental"
     }
 ]

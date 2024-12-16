@@ -49,8 +49,6 @@ def setup_selenium_driver():
     driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()), options=edge_options)
     return driver
 
-import ast
-
 def process_url(driver, date, url):
     """
     Fetch and process a single URL, extracting specific data using Selenium.
@@ -61,46 +59,55 @@ def process_url(driver, date, url):
         url (str): The URL to fetch and process.
 
     Returns:
-        dict: A dictionary with date, ID (with Série included), Description.
+        dict: A dictionary with extracted data, including ID, Title, Diploma, Legislation Type, and Sumario.
     """
     print(f"Fetching and processing URL: {url}...")
     try:
         driver.get(url)
 
-        # Optionally wait for the content to load (adjust as needed)
-        time.sleep(5)  # Explicit wait; replace with WebDriverWait if more control is needed
+        # Wait for content to load
+        time.sleep(5)
 
-        # Extract ID from <breadcrumblist>
-        breadcrumblist_element = driver.find_element(By.XPATH, '//breadcrumblist')
-        breadcrumb_data = breadcrumblist_element.get_attribute('itemlistelement') if breadcrumblist_element else ""
+        # Extract Title
+        heading_element = driver.find_element(By.XPATH, '//h1')
+        title = heading_element.text.strip()
 
-        # If breadcrumb is found, extract the name (e.g., "Lei n.º 4/85")
-        breadcrumb_id = ""
-        if breadcrumb_data:
-            try:
-                breadcrumb_json = ast.literal_eval(breadcrumb_data)
-                if breadcrumb_json and isinstance(breadcrumb_json, list):
-                    breadcrumb_id = breadcrumb_json[0].get('name', '')
-            except Exception as e:
-                print(f"Error parsing breadcrumb data: {e}")
+        # Extract ID
+        legislation_id = None
+        
+        # Extract Legislation Type
+        legislation_type = ""
+        try:
+            script_element = driver.find_element(By.XPATH, '//script[@type="application/ld+json"]')
+            json_ld_data = script_element.get_attribute('innerHTML')
+            json_data = json.loads(json_ld_data)
+            legislation_type = json_data.get('legislationType', '')
+        except Exception as e:
+            print(f"Error extracting legislation type: {e}")
 
-        # Extract Description from <meta name="description" />
-        description_element = driver.find_element(By.XPATH, '//meta[@name="description"]')
-        description = description_element.get_attribute('content') if description_element else ""
+        # Extract Sumario
+        sumario = ""
+        try:
+            sumario_element = driver.find_element(By.ID, "b21-b1-InjectHTMLWrapper")
+            sumario = sumario_element.text.strip() if sumario_element else ""
+        except Exception as e:
+            print(f"Error extracting Sumario: {e}")
 
-        # Return only relevant data (no HTML content)
+        # Return extracted data
         print(f"Successfully processed URL: {url}")
         return {
-            'last_modified_date': date,
+            'data_ultima_modificacao': date,
             'url': url,
-            'ID': breadcrumb_id,  # "Lei n.º 4/85" from breadcrumb
-            'Description': description  # "Estatuto remuneratório dos titulares de cargos políticos" from meta description
+            'ID': legislation_id,
+            'Titulo': title,
+            'LegislationType': legislation_type,
+            'Sumario': sumario
         }
 
     except Exception as e:
         print(f"Error processing {url}: {e}")
         return None
-
+    
 
 def fetch_and_clean_html(sitemap_data):
     """
@@ -120,7 +127,7 @@ def fetch_and_clean_html(sitemap_data):
         driver = setup_selenium_driver()
 
         # Process only the first URL for debugging purposes
-        debug_sitemap_data = sitemap_data[:5]
+        debug_sitemap_data = sitemap_data[:3]
         for date, url in debug_sitemap_data:
             result = process_url(driver, date, url)
             if result:
