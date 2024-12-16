@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import requests
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.edge.service import Service
 from selenium.webdriver.edge.options import Options
@@ -7,17 +8,25 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 import time
 import json
+from pymongo import MongoClient
+from dotenv import load_dotenv
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def connect_to_mongo(mongo_user, mongo_password):
+    try:
+        mongo_uri = f"mongodb+srv://{mongo_user}:{mongo_password}@drbd.bbw8o.mongodb.net/?retryWrites=true&w=majority&appName=DRbd"
+        client = MongoClient(mongo_uri)
+        db = client['DiarioRepublica']
+        collection_dados = db['dados']
+        collection_metadados = db['metadados']
+        print("Connected to MongoDB.")
+        return client, db, collection_dados, collection_metadados
+    except Exception as e:
+        print(f"Error connecting to MongoDB: {e}")
+        return None, None, None, None
 
 def parse_sitemap(url):
-    """
-    Fetch and parse the XML sitemap.
-
-    Args:
-        url (str): URL of the XML sitemap.
-
-    Returns:
-        list: A list of tuples (date, URL).
-    """
     try:
         print(f"Fetching sitemap from {url}...")
         response = requests.get(url, timeout=10)
@@ -33,134 +42,121 @@ def parse_sitemap(url):
 
         print(f"Parsed {len(sitemap_data)} URLs from the sitemap.")
         return sitemap_data
-
     except (requests.RequestException, ET.ParseError) as e:
         print(f"Error: {e}")
         return []
 
 def setup_selenium_driver():
-    """
-    Sets up and returns a Selenium WebDriver instance with Edge.
-
-    Returns:
-        webdriver.Edge: The configured Selenium WebDriver instance.
-    """
     edge_options = Options()
+    edge_options.add_argument("--headless")
+    edge_options.add_argument("--disable-gpu")
     driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()), options=edge_options)
     return driver
 
-def process_url(driver, date, url):
-    """
-    Fetch and process a single URL, extracting specific data using Selenium.
+def insert_metadata(collection_metadados, result):
+    try:
+        collection_metadados.insert_one(result)
+    except Exception as e:
+        print(f"Error inserting metadata into 'metadados' collection: {e}")
 
-    Args:
-        driver (webdriver.Edge): The Selenium WebDriver instance.
-        date (str): The date associated with the URL.
-        url (str): The URL to fetch and process.
+def insert_data(collection_dados, result):
+    try:
+        result_data = collection_dados.insert_one(result)
+        return result_data.inserted_id
+    except Exception as e:
+        print(f"Error inserting data into 'dados' collection: {e}")
+        return None
 
-    Returns:
-        dict: A dictionary with extracted data, including ID, Title, Diploma, Legislation Type, Sumario, and Fragmento Diploma.
-    """
+def process_data(driver, date, url, collection_dados, collection_metadados):
     print(f"Fetching and processing URL: {url}...")
     try:
         driver.get(url)
+        time.sleep(3)
 
-        # Wait for content to load
-        time.sleep(5)
+        title = driver.find_element(By.XPATH, '//h1').text.strip()
+        legislation_id = driver.find_element(By.ID, "ConteudoTitle").text.strip()
+        legislation_type = json.loads(driver.find_element(By.XPATH, '//script[@type="application/ld+json"]').get_attribute('innerHTML')).get('legislationType', '')
 
-        # Extract Title
-        heading_element = driver.find_element(By.XPATH, '//h1')
-        title = heading_element.text.strip()
-
-        # Extract ID
-        legislation_id = None
-        
-        # Extract Legislation Type
-        legislation_type = ""
+       # Optional fields with fallback
         try:
-            script_element = driver.find_element(By.XPATH, '//script[@type="application/ld+json"]')
-            json_ld_data = script_element.get_attribute('innerHTML')
-            json_data = json.loads(json_ld_data)
-            legislation_type = json_data.get('legislationType', '')
-        except Exception as e:
-            print(f"Error extracting legislation type: {e}")
+            sumario = driver.find_element(By.ID, "b21-b1-InjectHTMLWrapper").text.strip()
+        except Exception:
+            sumario = None
 
-        # Extract Sumario
-        sumario = ""
         try:
-            sumario_element = driver.find_element(By.ID, "b21-b1-InjectHTMLWrapper")
-            sumario = sumario_element.text.strip() if sumario_element else ""
-        except Exception as e:
-            print(f"Error extracting Sumario: {e}")
+            fragmento_diploma = driver.find_element(By.ID, "b21-b4-InjectHTMLWrapper").text.strip()
+        except Exception:
+            fragmento_diploma = None
 
-        # Extract Fragmento Diploma
-        fragmento_diploma = ""
         try:
-            fragmento_element = driver.find_element(By.ID, "b21-b4-InjectHTMLWrapper")
-            fragmento_diploma_element = fragmento_element.find_element(By.XPATH, './/div')
-            fragmento_diploma = fragmento_diploma_element.text.strip() if fragmento_diploma_element else ""
-        except Exception as e:
-            print(f"Error extracting Fragmento Diploma: {e}")
+            global_alterations = " ".join([elem.text.strip() for elem in driver.find_elements(By.XPATH, '//*[starts-with(@id, "b21-b6-")]')])
+        except Exception:
+            global_alterations = None
 
-        # Return extracted data
-        print(f"Successfully processed URL: {url}")
-        return {
-            'data_ultima_modificacao': date,
-            'url': url,
-            'ID': legislation_id,
-            'Titulo': title,
-            'LegislationType': legislation_type,
-            'Sumario': sumario,
-            'FragmentoDiploma': fragmento_diploma  # Added Fragmento Diploma key
+        try:
+            b3_content = driver.find_element(By.ID, "$b3").text.strip()
+        except Exception:
+            b3_content = None
+
+
+        result_data = {
+            'TipoLegislacao': legislation_type,
+            'FragmentoDiploma': fragmento_diploma,
+            'AlteracoesGlobais': global_alterations,
+            'Content': b3_content
         }
 
+        data_object_id = insert_data(collection_dados, result_data)
+
+        result_metadata = {
+            'Database_ID': data_object_id,
+            'Data_ultima_modificacao': date,
+            'Url': url,
+            'ID': legislation_id,
+            'Titulo': title,
+            'Sumario': sumario
+        }
+
+        insert_metadata(collection_metadados, result_metadata)
+
+        print(f"Successfully processed URL: {url}")
     except Exception as e:
         print(f"Error processing {url}: {e}")
-        return None
-    
 
-def fetch_and_clean_html(sitemap_data):
-    """
-    Fetch URLs and extract content sequentially using a single Selenium driver.
-
-    Args:
-        sitemap_data (list): List of tuples (date, URL).
-
-    Returns:
-        list: A list of dictionaries with extracted data.
-    """
-    print("Starting sequential processing of URLs...")
-    result_list = []
-    driver = None
-
+def process_batch(batch, collection_dados, collection_metadados):
+    driver = setup_selenium_driver()
     try:
-        driver = setup_selenium_driver()
-
-        # Process only the first URL for debugging purposes
-        debug_sitemap_data = sitemap_data[:3]
-        for date, url in debug_sitemap_data:
-            result = process_url(driver, date, url)
-            if result:
-                result_list.append(result)
-
+        for date, url in batch:
+            process_data(driver, date, url, collection_dados, collection_metadados)
     finally:
-        if driver:
-            driver.quit()
+        driver.quit()
+
+def from_html_to_database_process(sitemap_data, collection_dados, collection_metadados, batch_size=5):
+    print("Starting batched processing of URLs...")
+    futures = []
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        for i in range(0, len(sitemap_data), batch_size):
+            batch = sitemap_data[i:i + batch_size]
+            futures.append(executor.submit(process_batch, batch, collection_dados, collection_metadados))
+
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Batch processing error: {e}")
 
     print("Completed processing of all URLs.")
-    return result_list
 
-# URL of the sitemap
+# Main script
+load_dotenv()
+mongo_user = os.getenv('MONGO_USER')
+mongo_password = os.getenv('MONGO_PASSWORD')
+print("mongo_password: ", mongo_password)
+
 sitemap_url = "https://files.diariodarepublica.pt/sitemap/legislacao-consolidada-sitemap-1.xml"
+client, db, collection_dados, collection_metadados = connect_to_mongo(mongo_user, mongo_password)
 
-# Process sitemap and fetch cleaned HTML
-print("Starting the entire process...")
-sitemap_data = parse_sitemap(sitemap_url)
-cleaned_html_list = fetch_and_clean_html(sitemap_data)
-
-# Save results to JSON
-output_file = "./DB_population/full_data.json"
-with open(output_file, "w", encoding="utf-8") as f:
-    json.dump(cleaned_html_list, f, ensure_ascii=False, indent=4)
-
-print(f"Data saved to {output_file}.")
+if client:
+    print("Starting the entire process...")
+    sitemap_data = parse_sitemap(sitemap_url)
+    from_html_to_database_process(sitemap_data, collection_dados, collection_metadados)
