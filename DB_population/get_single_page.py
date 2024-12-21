@@ -41,6 +41,6 @@ def fetch_html_and_save(url, filename):
             driver.quit()
 
 # Example usage
-url = "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2014-66624400"
-filename = "./DB_population/example_DR_pages/example_3.html"
+url = "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2004-34510375"
+filename = "./DB_population/example_DR_pages/exception_1.html"
 fetch_html_and_save(url, filename)

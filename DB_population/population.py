@@ -12,6 +12,7 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 def connect_to_mongo(mongo_user, mongo_password):
     try:
@@ -70,13 +71,41 @@ def insert_data(collection_dados, result):
 def process_data(driver, date, url, collection_dados, collection_metadados):
     print(f"Fetching and processing URL: {url}...")
     try:
+        # Check if the URL was already processed
+        existing_metadata = collection_metadados.find_one({'Url': url})
+        if existing_metadata:
+            print(f"-> SKIPPING {url}")
+            return
+
         driver.get(url)
         time.sleep(3)
 
-        title = driver.find_element(By.XPATH, '//h1').text.strip()
-        legislation_id = driver.find_element(By.ID, "ConteudoTitle").text.strip()
-        legislation_type = json.loads(driver.find_element(By.XPATH, '//script[@type="application/ld+json"]').get_attribute('innerHTML')).get('legislationType', '')
+        legislation_id, legislation_type, modificado =  None,  None, None
 
+        try:
+            title = driver.find_element(By.XPATH, '//h1').text.strip()
+        except Exception:
+            try:
+                page_title = driver.title
+                title = page_title.replace(" | DR", "").strip()
+            except:
+                title = None
+                
+        try:
+            legislation_id = driver.find_element(By.ID, "ConteudoTitle").text.strip()
+        except:
+            legislation_id = None
+
+        try:
+            legislation_type = json.loads(driver.find_element(By.XPATH, '//script[@type="application/ld+json"]').get_attribute('innerHTML')).get('legislationType', '')
+        except:
+            legislation_type = None
+        
+        try:
+            modificado = driver.find_element(By.ID, "Modificado").text.strip()
+        except:
+            modificado = None
+        
        # Optional fields with fallback
         try:
             sumario = driver.find_element(By.ID, "b21-b1-InjectHTMLWrapper").text.strip()
@@ -99,22 +128,29 @@ def process_data(driver, date, url, collection_dados, collection_metadados):
             b3_content = None
 
 
+        current_date = datetime.now().isoformat()
+
         result_data = {
             'TipoLegislacao': legislation_type,
             'FragmentoDiploma': fragmento_diploma,
             'AlteracoesGlobais': global_alterations,
-            'Content': b3_content
+            'Content': b3_content,
+            'db_insertion_date' : current_date,
+            'db_modification_date' : current_date
         }
 
         data_object_id = insert_data(collection_dados, result_data)
 
         result_metadata = {
-            'Database_ID': data_object_id,
+            'db_ID': data_object_id,
             'Data_ultima_modificacao': date,
+            'Modificacao' : modificado,
             'Url': url,
             'ID': legislation_id,
             'Titulo': title,
-            'Sumario': sumario
+            'Sumario': sumario,
+            'db_insertion_date' : current_date,
+            'db_modification_date' : current_date
         }
 
         insert_metadata(collection_metadados, result_metadata)
@@ -151,7 +187,6 @@ def from_html_to_database_process(sitemap_data, collection_dados, collection_met
 load_dotenv()
 mongo_user = os.getenv('MONGO_USER')
 mongo_password = os.getenv('MONGO_PASSWORD')
-print("mongo_password: ", mongo_password)
 
 sitemap_url = "https://files.diariodarepublica.pt/sitemap/legislacao-consolidada-sitemap-1.xml"
 client, db, collection_dados, collection_metadados = connect_to_mongo(mongo_user, mongo_password)
