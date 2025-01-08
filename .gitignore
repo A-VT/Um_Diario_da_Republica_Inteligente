@@ -4,7 +4,10 @@ DB_population/population_data_sample.json
 DB_population/analysis.py
 DB_population/Db_corrections/
 
+IR/results/
+
 sklearn-env/
+utils/__pycache__
 
 
 # Byte-compiled / optimized / DLL files

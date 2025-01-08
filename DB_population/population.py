@@ -8,24 +8,9 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 import time
 import json
-from pymongo import MongoClient
-from dotenv import load_dotenv
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-
-def connect_to_mongo(mongo_user, mongo_password):
-    try:
-        mongo_uri = f"mongodb+srv://{mongo_user}:{mongo_password}@drbd.bbw8o.mongodb.net/?retryWrites=true&w=majority&appName=DRbd"
-        client = MongoClient(mongo_uri)
-        db = client['DiarioRepublica']
-        collection_dados = db['dados']
-        collection_metadados = db['metadados']
-        print("Connected to MongoDB.")
-        return client, db, collection_dados, collection_metadados
-    except Exception as e:
-        print(f"Error connecting to MongoDB: {e}")
-        return None, None, None, None
+from ..utils.mongo_conn import connect_to_mongo
 
 def parse_sitemap(url):
     try:
@@ -184,12 +169,8 @@ def from_html_to_database_process(sitemap_data, collection_dados, collection_met
     print("Completed processing of all URLs.")
 
 # Main script
-load_dotenv()
-mongo_user = os.getenv('MONGO_USER')
-mongo_password = os.getenv('MONGO_PASSWORD')
-
 sitemap_url = "https://files.diariodarepublica.pt/sitemap/legislacao-consolidada-sitemap-1.xml"
-client, db, collection_dados, collection_metadados = connect_to_mongo(mongo_user, mongo_password)
+client, db, collection_dados, collection_metadados = connect_to_mongo()
 
 if client:
     print("Starting the entire process...")
