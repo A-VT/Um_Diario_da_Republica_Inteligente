@@ -1,13 +1,11 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-#from gensim.summarization import keywords
 from utils.mongo_conn import *
+from utils.process_queries import preprocess_query
 import joblib
 import json
 import os
-import random
 
-PREPROCESS_QUERY = True
 MODEL_FILE = "./IR/models/tfidf_model.pkl"
 OUTPUT_FILE = "./IR/results/tf-idf_sklearn.json"
 TYPE_MODEL = "TF-IDF_SIMIL"
@@ -21,7 +19,6 @@ def fetch_documents(collection):
         print(f"Error fetching documents: {e}")
         return []
 
-
 def preprocess_documents(documents):
     processed_docs = []
     for doc in documents:
@@ -33,7 +30,6 @@ def preprocess_documents(documents):
             "search_content": combined_text
         })
     return processed_docs
-
 
 def build_tfidf_model(documents):
     corpus = [doc["search_content"] for doc in documents]
@@ -60,6 +56,7 @@ def load_model():
     except Exception as e:
         print(f"Error loading model: {e}")
         return None, None, None
+
 
 def find_most_similar(query, vectorizer, tfidf_matrix, documents, top_n=5):
     query_vector = vectorizer.transform([query])
@@ -106,10 +103,8 @@ def main():
 
     # Query input
     query = input("Enter your question: ")
-    #if PREPROCESS_QUERY:
-    #    key_list = keywords(query).split('\\n')
-    #    print(f"keylist: {key_list}")
-    
+    search_terms = preprocess_query(query)
+        
     results = find_most_similar(query, vectorizer, tfidf_matrix, documents, top_n=N_RESULTS)
 
     save_results(results)
