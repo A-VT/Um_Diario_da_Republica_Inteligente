@@ -15,7 +15,12 @@ nltk.download('omw-1.4')
 
 nlp = spacy.load("pt_core_news_md")
 
-def preprocess_query(query, max_keywords):
+def preprocess_query(query):
+    kw_extractor = yake.KeywordExtractor()
+    keywords = kw_extractor.extract_keywords(query)
+    return [kw[0] for kw in keywords]
+
+def old_preprocess_query(query, max_keywords):
     #define keywords
     custom_kw_extractor = yake.KeywordExtractor(lan="pt", n=2, dedupLim=0.9, dedupFunc='seqm', windowsSize=1, top=max_keywords, features=None)
     keywords = list(custom_kw_extractor.extract_keywords(query))

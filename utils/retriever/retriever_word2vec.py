@@ -1,22 +1,28 @@
 from sklearn.metrics.pairwise import cosine_similarity
 from gensim.models import Word2Vec
-import nltk
-from nltk.tokenize import word_tokenize
+import spacy
 import os
 import numpy as np
 
-nltk.download('punkt')
-
 class Word2VecRetriever:
     def __init__(self, model_file="./IR/models/word2vec_model.model"):
+        self.nlp = spacy.load("pt_core_news_md")
         self.model_file = model_file
         self.model = None
+        self.documents = None
+        self.corpus = None
+
+    def _tokenize(self, text):
+        """Tokenizes Portuguese text using spaCy and removes stopwords."""
+        doc = self.nlp(text.lower())
+        return [token.text for token in doc if token.is_alpha and token.text not in self.nlp.Defaults.stop_words]
 
     def build_model(self, documents, vector_size=100, window=5, min_count=1, workers=4):
-        """Builds the Word2Vec model using the provided documents."""
-        corpus = [doc["search_content"] for doc in documents]
-        tokenized_corpus = [word_tokenize(doc.lower()) for doc in corpus]
-        self.model = Word2Vec(sentences=tokenized_corpus, vector_size=vector_size, window=window, min_count=min_count, workers=workers)
+        """Builds the Word2Vec model using Portuguese documents."""
+        self.documents = documents
+        self.corpus = [doc["search_content"] for doc in documents]
+        tokenized_corpus = [self._tokenize(doc) for doc in self.corpus]
+        self.model = Word2Vec(sentences=tokenized_corpus, sg=0, vector_size=vector_size, min_count=min_count, workers=workers, epochs=5) #window=window
 
     def save_model(self):
         """Saves the Word2Vec model to a file."""
@@ -27,58 +33,65 @@ class Word2VecRetriever:
         except Exception as e:
             print(f"Error saving model: {e}")
 
+
     def load_model(self):
         """Loads the Word2Vec model from a file."""
-        try:
-            if os.path.exists(self.model_file):
-                self.model = Word2Vec.load(self.model_file)
-                print(f"Model loaded from {self.model_file}.")
-            else:
-                print(f"Model file not found at {self.model_file}.")
-        except Exception as e:
-            print(f"Error loading Word2Vec model: {e}")
-
-    def _calculate_similarity(self, query_vector, document):
-        """Calculates the cosine similarity between the query vector and a document vector."""
-        doc_tokens = word_tokenize(document["search_content"].lower())
-        valid_tokens = [self.model.wv[token] for token in doc_tokens if token in self.model.wv]
-
-        if valid_tokens:
-            # You can use a weighted average of word vectors or another strategy
-            doc_vector = np.mean(valid_tokens, axis=0)  # Mean of word vectors
+        if not os.path.exists(self.model_file):
+            print(f"Model file {self.model_file} does not exist. A new model will be created.")
+            return
         else:
-            doc_vector = np.zeros(self.model.vector_size)  # Zero vector if no valid tokens
+            try:
+                self.model = Word2Vec.load(self.model_file)
+                print(f"Model and documents loaded from {self.model_file}.")
+            except Exception as e:
+                print(f"Error loading model: {e}")
 
-        return cosine_similarity([query_vector], [doc_vector])[0][0]
+    def _tokenize(self, text):
+        """Tokenizes text using spaCy's Portuguese model."""
+        doc = self.nlp(text)
+        return [token.text for token in doc if not token.is_stop and not token.is_punct]
 
-    def find_most_similar(self, search_terms, documents, top_n=5):
-        """Finds the most similar documents for the given search terms."""
-        if self.model is None:
-            print("Model is not loaded or built.")
+    def calculate_similarities(self, search_term, documents, top_n):
+        """Calculates similarities between the query and the Word2Vec model."""
+        if self.model is None or self.documents is None:
+            print("Model is not built or loaded.")
             return []
 
-        tokens = word_tokenize(search_terms.lower())
-        valid_tokens = [self.model.wv[token] for token in tokens if token in self.model.wv]
+        tokenized_query = self._tokenize(search_term)
 
-        if valid_tokens:
-            query_vector = np.mean(valid_tokens, axis=0)  # Mean of word vectors for the query
-        else:
-            query_vector = np.zeros(self.model.vector_size)  # Zero vector if no valid tokens
+        valid_tokens = [self.model.wv[token] for token in tokenized_query if token in self.model.wv]
 
-        similarities = [
-            {
+        query_vector = np.mean(valid_tokens, axis=0) if valid_tokens else np.zeros(self.model.vector_size)
+
+        similarities = []
+        for doc in documents:
+            doc_tokens = self._tokenize(doc["search_content"])
+            doc_vectors = [self.model.wv[token] for token in doc_tokens if token in self.model.wv]
+
+            doc_vector = np.mean(doc_vectors, axis=0) if doc_vectors else np.zeros(self.model.vector_size)
+
+            similarity_score = cosine_similarity([query_vector], [doc_vector])[0][0]
+
+            similarities.append({
                 "id": doc["id"],
                 "text": doc["search_content"],
-                "similarity_score": float(self._calculate_similarity(query_vector, doc))  # Convert to float
-            }
-            for doc in documents
-        ]
+                "similarity_score": float(similarity_score),
+            })
 
-        similarities.sort(key=lambda x: x["similarity_score"], reverse=True)
-        top_results = similarities[:top_n]
+        top_results = sorted(similarities, key=lambda x: x["similarity_score"], reverse=True)[:top_n]
+        return top_results
 
-        # Return the structured result as per the desired JSON format
-        return [{
-            "query": search_terms,
-            "results": top_results
-        }]
+    def find_most_similar(self, search_terms, documents, top_n):
+        """Finds the most similar documents for the given Portuguese search terms."""
+        if self.documents == None:
+            self.documents = documents
+
+        if self.model is None or self.documents is None:
+            print("Model is not built or loaded.")
+            return []
+
+        for term in search_terms:
+            query_results = self.calculate_similarities(term, self.documents, top_n)
+        print("Results obtained for Word2vec.")
+
+        return query_results

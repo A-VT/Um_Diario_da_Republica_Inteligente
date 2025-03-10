@@ -9,13 +9,14 @@ class TfidfRetriever:
         self.model = None
         self.tfidf_matrix = None
         self.documents = None
+        self.corpus = None
 
     def build_model(self, documents):
         """Builds the TF-IDF model using the provided documents."""
         self.documents = documents
-        corpus = [doc["search_content"] for doc in documents]
+        self.corpus = [doc["search_content"] for doc in documents]
         self.model = TfidfVectorizer()
-        self.tfidf_matrix = self.model.fit_transform(corpus)
+        self.tfidf_matrix = self.model.fit_transform(self.corpus)
 
     def save_model(self):
         """Saves the TF-IDF model and associated data to a file."""
@@ -31,11 +32,12 @@ class TfidfRetriever:
         if not os.path.exists(self.model_file):
             print(f"Model file {self.model_file} does not exist. A new model will be created.")
             return
-        try:
-            self.model, self.tfidf_matrix, self.documents = joblib.load(self.model_file)
-            print(f"Model and documents loaded from {self.model_file}.")
-        except Exception as e:
-            print(f"Error loading model: {e}")
+        else:
+            try:
+                self.model, self.tfidf_matrix, self.documents = joblib.load(self.model_file)
+                print(f"Model and documents loaded from {self.model_file}.")
+            except Exception as e:
+                print(f"Error loading model: {e}")
 
     def calculate_similarities(self, query_vector, top_n):
         """Calculates similarities between the query vector and the TF-IDF matrix."""
@@ -54,22 +56,16 @@ class TfidfRetriever:
             for idx in top_indices
         ]
 
-    def find_most_similar(self, search_terms, top_n=5, search_with_keywords=False):
+    def find_most_similar(self, search_terms, top_n):
         """Finds the most similar documents for the given search terms."""
         if self.model is None or self.tfidf_matrix is None or self.documents is None:
             print("Model is not built or loaded.")
             return []
 
-        results = []
-
-        if search_with_keywords:
-            for query in search_terms:
-                query_vector = self.model.transform([query])
-                query_results = self.calculate_similarities(query_vector, top_n)
-                results.append({"query": query, "results": query_results})
-        else:
-            query_vector = self.model.transform([search_terms])
+        for term in search_terms:
+            query_vector = self.model.transform([term])
             query_results = self.calculate_similarities(query_vector, top_n)
-            results.append({"query": search_terms, "results": query_results})
 
-        return results
+        print("Results obtained for TF-IDF.")
+
+        return query_results
