@@ -95,3 +95,15 @@ class Word2VecRetriever:
         print("Results obtained for Word2vec.")
 
         return query_results
+    
+    def __del__(self):
+        """Destructor to clean up resources."""
+        if hasattr(self, 'nlp') and self.nlp is not None:
+            del self.nlp
+        if hasattr(self, 'model') and self.model is not None:
+            del self.model
+        if hasattr(self, 'documents'):
+            self.documents = None
+            self.corpus = None
+        self.model_file = None
+        print(f"Instance of {self.__class__.__name__} cleaned up.")

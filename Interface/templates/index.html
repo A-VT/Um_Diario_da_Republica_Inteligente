@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Web Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 50px;
+        }
+        input, button {
+            padding: 10px;
+            font-size: 16px;
+        }
+        input {
+            width: 300px;
+        }
+        .checkbox-group, .slider-group {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Development Interface</h1>
+    
+    <input type="text" id="textInput" placeholder="Enter text here">
+    
+    <div class="checkbox-group">
+        <label><input type="checkbox" name="irModel" value="TF-IDF"> TF-IDF</label>
+        <label><input type="checkbox" name="irModel" value="WORD2VEC"> WORD2VEC</label>
+        <label><input type="checkbox" name="irModel" value="BM25"> BM25</label>
+        <label><input type="checkbox" name="irModel" value="WIKI_WORD2VEC"> WIKI WORD2VEC</label> <!-- Added this line -->
+    </div>
+
+    <div class="slider-group">
+        <label for="nDocs">Number of Documents: <span id="nDocsValue">15</span></label><br>
+        <input type="range" id="nDocs" name="n_docs" min="1" max="30" value="15" 
+               oninput="document.getElementById('nDocsValue').innerText = this.value">
+    </div>
+
+    <div class="checkbox-group">
+        <label><input type="checkbox" id="autoSelectKeywords" name="autoSelectKeywords"> Auto Select Keywords</label>
+    </div>
+    
+    <button onclick="sendData()">Send</button>
+    
+    <p id="response"></p>
+
+    <script>
+        async function sendData() {
+            const userInput = document.getElementById("textInput").value.trim();
+            const nDocs = parseInt(document.getElementById("nDocs").value, 10);
+            const autoSelectKeywords = document.getElementById("autoSelectKeywords").checked;
+            
+            let selectedModels = [];
+            document.querySelectorAll("input[name='irModel']:checked").forEach(checkbox => {
+                selectedModels.push(checkbox.value);
+            });
+
+            const requestData = {
+                text: userInput,
+                models: selectedModels,
+                n_docs: nDocs,
+                auto_select_keywords: autoSelectKeywords
+            };
+
+            try {
+                const response = await fetch("/send", {
+                    method: "POST", // Changed from GET to POST
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+                document.getElementById("response").innerText = data.answer; // Use 'answer' instead of 'message'
+            } catch (error) {
+                console.error("Error:", error);
+                document.getElementById("response").innerText = "Error sending request.";
+            }
+        }
+    </script>
+</body>
+</html>
