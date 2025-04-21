@@ -6,7 +6,8 @@ DB_population/clean_data.py
 DB_population/Db_corrections/
 
 IR/results/
-IR/models/
+IR/models
+IR/test_Word2Vec.py
 
 GR/results/
 

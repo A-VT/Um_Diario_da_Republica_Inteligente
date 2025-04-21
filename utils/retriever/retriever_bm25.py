@@ -1,7 +1,10 @@
 from rank_bm25 import BM25Okapi
+from collections import defaultdict
 import joblib
 import json
 import os
+
+from utils.json_file_handler import JSONFileHandler
 
 class BM25Retriever:
     def __init__(self, model_file="./IR/models/bm25_model.pkl"):
@@ -37,13 +40,18 @@ class BM25Retriever:
             except Exception as e:
                 print(f"Error loading model: {e}")
 
-    def calculate_similarities(self, search_term, top_n):
+    def calculate_similarities(self, search_terms, top_n):
         """Calculates similarities between the query and the BM25 model."""
         if self.model is None or self.documents is None:
             print("Model is not built or loaded.")
             return []
 
-        tokenized_query = search_term.split()
+        #tokenized_query = search_term.split()
+
+        tokenized_query = search_terms
+        if isinstance(search_terms, str): #a string an not a list of
+            tokenized_query = tokenized_query.split()
+
         scores = self.model.get_scores(tokenized_query)
 
         # Normalization of results - 0 to 1
@@ -59,20 +67,28 @@ class BM25Retriever:
         return [
                 {
                     "id": self.documents[idx]["id"],
+                    "db_ID": self.documents[idx]["db_ID"],
                     "text": self.documents[idx]["search_content"],
-                    "similarity_score": normalized_scores[idx], #scores[idx],
+                    "similarity_score": normalized_scores[idx],
+                    "terms": tokenized_query
                 }
                 for idx in top_indices
             ]
 
     def find_most_similar(self, search_terms, top_n):
         """Finds the most similar documents for the given search terms."""
+        self.n_terms = len(search_terms)
+
         if self.model is None or self.documents is None:
             print("Model is not built or loaded.")
             return []
 
-        for term in search_terms:
-            query_results = self.calculate_similarities(term, top_n)
+        query_results = self.calculate_similarities(search_terms, top_n)
+
         print("Results obtained for BM25.")
+
+        file_handler = JSONFileHandler("IR/results/bm25_results.json")
+        file_handler.delete_results()
+        file_handler.save_results(results=query_results)
 
         return query_results

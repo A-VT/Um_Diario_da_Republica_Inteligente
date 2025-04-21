@@ -1,5 +1,7 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from utils.json_file_handler import JSONFileHandler
+from collections import defaultdict
 import joblib
 import os
 
@@ -39,7 +41,7 @@ class TfidfRetriever:
             except Exception as e:
                 print(f"Error loading model: {e}")
 
-    def calculate_similarities(self, query_vector, top_n):
+    def calculate_similarities(self, query_vector, top_n, search_terms):
         """Calculates similarities between the query vector and the TF-IDF matrix."""
         if self.tfidf_matrix is None or self.documents is None:
             print("Model is not built or loaded.")
@@ -50,22 +52,78 @@ class TfidfRetriever:
         return [
             {
                 "id": self.documents[idx]["id"],
+                "db_ID": self.documents[idx]["db_ID"],
                 "text": self.documents[idx]["search_content"],
                 "similarity_score": similarities[idx],
+                "terms": search_terms
             }
             for idx in top_indices
         ]
+    
+    def _balance_results(self, query_results):
+        merged_results = defaultdict(lambda: {
+            "id": None,
+            "db_ID": None,
+            "text": None,
+            "terms": [],
+            "similarity_scores": []
+        })
+
+        # Flatten the nested list and merge entries
+        for result_list in query_results:
+            for item in result_list:
+                doc_id = item["id"]
+                merged = merged_results[doc_id]
+
+                # Set static values if not already set
+                if merged["id"] is None:
+                    merged["id"] = item["id"]
+                    merged["db_ID"] = item["db_ID"]
+                    merged["text"] = item["text"]
+
+                # Add similarity score and search term
+                merged["similarity_scores"].append(item["similarity_score"])
+                merged["terms"].append(item["terms"])
+
+        # Final balanced result with averaged similarity score
+        balanced = []
+        for doc in merged_results.values():
+            avg_score = sum(doc["similarity_scores"]) / len(doc["similarity_scores"])
+            confidence = len(doc["similarity_scores"]) / self.n_terms
+            similarity_score = avg_score * confidence
+            balanced.append({
+                "id": doc["id"],
+                "db_ID": doc["db_ID"],
+                "text": doc["text"],
+                "terms": doc["terms"],
+                "scores": doc["similarity_scores"],
+                "avg_score": avg_score,
+                "confidence": confidence,
+                "similarity_score": similarity_score
+            })
+        balanced.sort(key=lambda x: x["similarity_score"], reverse=True)
+        return balanced
 
     def find_most_similar(self, search_terms, top_n):
         """Finds the most similar documents for the given search terms."""
+        self.n_terms = len(search_terms)
+
         if self.model is None or self.tfidf_matrix is None or self.documents is None:
             print("Model is not built or loaded.")
             return []
 
-        for term in search_terms:
-            query_vector = self.model.transform([term])
-            query_results = self.calculate_similarities(query_vector, top_n)
+        full_query = " ".join(search_terms)
+        full_query = " ".join(dict.fromkeys(full_query.split()))
+
+        query_vector = self.model.transform([full_query])
+        query_results = self.calculate_similarities(query_vector, top_n, search_terms)
+
+        #query_results = self._balance_results(full_results)
 
         print("Results obtained for TF-IDF.")
+
+        file_handler = JSONFileHandler("IR/results/tfidf_results.json")
+        file_handler.delete_results()
+        file_handler.save_results(results=query_results)
 
         return query_results

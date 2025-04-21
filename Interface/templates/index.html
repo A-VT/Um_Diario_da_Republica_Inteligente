@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Web Interface</title>
+    <title>Development Interface</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -20,6 +20,19 @@
         .checkbox-group, .slider-group {
             margin: 20px 0;
         }
+        #response {
+            white-space: pre-wrap; /* Preserve line breaks */
+            margin-top: 20px;
+            font-family: monospace;
+            text-align: left;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #progress {
+            font-size: 18px;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -31,12 +44,12 @@
         <label><input type="checkbox" name="irModel" value="TF-IDF"> TF-IDF</label>
         <label><input type="checkbox" name="irModel" value="WORD2VEC"> WORD2VEC</label>
         <label><input type="checkbox" name="irModel" value="BM25"> BM25</label>
-        <label><input type="checkbox" name="irModel" value="WIKI_WORD2VEC"> WIKI WORD2VEC</label> <!-- Added this line -->
+        <label><input type="checkbox" name="irModel" value="WIKI_WORD2VEC"> WIKI WORD2VEC</label>
     </div>
 
     <div class="slider-group">
-        <label for="nDocs">Number of Documents: <span id="nDocsValue">15</span></label><br>
-        <input type="range" id="nDocs" name="n_docs" min="1" max="30" value="15" 
+        <label for="nDocs">Number of Documents: <span id="nDocsValue">10</span></label><br>
+        <input type="range" id="nDocs" name="n_docs" min="1" max="15" value="10" 
                oninput="document.getElementById('nDocsValue').innerText = this.value">
     </div>
 
@@ -46,14 +59,18 @@
     
     <button onclick="sendData()">Send</button>
     
-    <p id="response"></p>
+    <p id="progress">Progress:</p>
+    <pre id="response"></pre>
 
     <script>
+        // Send data to the server
         async function sendData() {
+            document.getElementById("response").innerText = ""; // Clear previous messages
+
             const userInput = document.getElementById("textInput").value.trim();
             const nDocs = parseInt(document.getElementById("nDocs").value, 10);
             const autoSelectKeywords = document.getElementById("autoSelectKeywords").checked;
-            
+
             let selectedModels = [];
             document.querySelectorAll("input[name='irModel']:checked").forEach(checkbox => {
                 selectedModels.push(checkbox.value);
@@ -68,7 +85,7 @@
 
             try {
                 const response = await fetch("/send", {
-                    method: "POST", // Changed from GET to POST
+                    method: "POST",
                     headers: {
                         "Content-Type": "application/json"
                     },
@@ -76,7 +93,7 @@
                 });
 
                 const data = await response.json();
-                document.getElementById("response").innerText = data.answer; // Use 'answer' instead of 'message'
+                document.getElementById("response").innerText += "\n" + data.answer;
             } catch (error) {
                 console.error("Error:", error);
                 document.getElementById("response").innerText = "Error sending request.";
