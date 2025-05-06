@@ -47,11 +47,12 @@ def send():
     
     list_ids = IR_Module.get_result_ids(results)
 
-    file_handler = JSONFileHandler("IR/results/temp_results.json")
+
+    file_handler = JSONFileHandler("IR_analysis/parl_europeu/final_results.json")
     file_handler.delete_results()
     file_handler.save_results(results=results)
 
-    """
+    """ 
     # GR Module (commented out for now)
     GR_Module = gr_module.GRSystem(list_doc_ids=list_ids)
     summary_response = GR_Module.get_summaries(user_query=request_data.text)
@@ -65,7 +66,8 @@ def send():
 
     return jsonify(comm_req.QueryResponse(answer=input_note).model_dump())
 
-
-
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)
+
+
+

@@ -162,7 +162,8 @@ class WikiWord2VecRetriever:
         #balanced = self._balance_results(query_results)
         print("Results obtained for Wiki_Word2Vec.")
 
-        file_handler = JSONFileHandler("IR/results/wiki_word2vec_results.json")
+        output_file = "IR_analysis/parl_europeu" #IR/results
+        file_handler = JSONFileHandler(f"{output_file}/wiki_word2vec_results.json")
         file_handler.delete_results()
         file_handler.save_results(results=results)
 

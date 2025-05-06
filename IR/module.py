@@ -5,18 +5,21 @@ from utils.retriever.retriever_bm25 import BM25Retriever
 from utils.retriever.retriever_wiki_word2vec import WikiWord2VecRetriever
 from utils.mongo_conn import connect_to_mongo
 from utils.retriever.process_queries import preprocess_query
+from utils.IR_direct_querying.IR_mongo_query import mongo_text_search
+from utils.IR_direct_querying.IR_elastic_query import elastic_query_search
 from dotenv import load_dotenv
 from enum import Enum
 import os
 
 from utils.json_file_handler import JSONFileHandler
 from utils.progress_messenger import ProgressMessenger
-from flask_sse import sse  # Import Flask-SSE for broadcasting
+from flask_sse import sse
 
 class IRSystem:
     def __init__(self):
         self.client, self.db, self.collection_dados, self.collection_metadados = self._connect_to_db()
         self.documents = self._prep_model()
+        self.output_directory = "IR_analysis/parl_europeu" #IR/results
 
     def _connect_to_db(self):
         load_dotenv()
@@ -88,7 +91,7 @@ class IRSystem:
         search_terms.update(preprocess_query(user_query, user_autokeywords))
         self.search_terms = list(set(search_terms))
 
-        file_handler = JSONFileHandler("IR/results/search_terms.json")
+        file_handler = JSONFileHandler(f"{self.output_directory}/search_terms.json")
         file_handler.delete_results()
         file_handler.save_results(results=self.search_terms)
 
@@ -113,6 +116,11 @@ class IRSystem:
 
         # Balance results by average score and return the top results
         self._global_balance_results(results)
+
+        #comparative searches
+        self._mongo_direct_querying()
+        self._elastic_direct_querying()
+
         return results
 
     def _add_results(self, results, temp_results, model_type):
@@ -140,3 +148,30 @@ class IRSystem:
 
     def get_result_ids(self, results):
         return [result["db_ID"] for result in results if "db_ID" in result]
+    
+
+
+    def _mongo_direct_querying(self):
+        print("[IR] Performing direct MongoDB search...")
+
+        mongo_results = mongo_text_search(
+            collection_metadados=self.collection_metadados,
+            search_terms=self.search_terms,
+            n_docs=self.n_results
+        )
+
+        file_handler = JSONFileHandler(f"{self.output_directory}/mongo_direct_querying.json")
+        file_handler.delete_results()
+        file_handler.save_results(results=mongo_results)
+
+    def _elastic_direct_querying(self):
+        print("[IR] Performing an Elastic search...")
+
+        elastic_results = elastic_query_search(
+            search_terms=self.search_terms,
+            n_docs=self.n_results
+        )
+
+        file_handler = JSONFileHandler(f"{self.output_directory}/elastic_direct_querying.json")
+        file_handler.delete_results()
+        file_handler.save_results(results=elastic_results)

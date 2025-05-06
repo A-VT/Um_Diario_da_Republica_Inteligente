@@ -49,8 +49,8 @@ class BM25Retriever:
         #tokenized_query = search_term.split()
 
         tokenized_query = search_terms
-        if isinstance(search_terms, str): #a string an not a list of
-            tokenized_query = tokenized_query.split()
+        #if isinstance(search_terms, str): #a string an not a list of
+        #    tokenized_query = tokenized_query.split()
 
         scores = self.model.get_scores(tokenized_query)
 
@@ -87,7 +87,8 @@ class BM25Retriever:
 
         print("Results obtained for BM25.")
 
-        file_handler = JSONFileHandler("IR/results/bm25_results.json")
+        output_file = "IR_analysis/parl_europeu" #IR/results
+        file_handler = JSONFileHandler(f"{output_file}/bm25_results.json")
         file_handler.delete_results()
         file_handler.save_results(results=query_results)
 

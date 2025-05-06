@@ -247,8 +247,8 @@ class Word2VecRetriever:
         
         print("Results obtained for Word2Vec.")
 
-
-        file_handler = JSONFileHandler("IR/results/word2vec_results.json")
+        output_file = "IR_analysis/parl_europeu" #IR/results
+        file_handler = JSONFileHandler(f"{output_file}/word2vec_results.json")
         file_handler.delete_results()
         file_handler.save_results(results=results)
 

@@ -122,7 +122,8 @@ class TfidfRetriever:
 
         print("Results obtained for TF-IDF.")
 
-        file_handler = JSONFileHandler("IR/results/tfidf_results.json")
+        output_file = "IR_analysis/parl_europeu" #IR/results
+        file_handler = JSONFileHandler(f"{output_file}/tfidf_results.json")
         file_handler.delete_results()
         file_handler.save_results(results=query_results)
 

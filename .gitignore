@@ -9,11 +9,13 @@ IR/results/
 IR/models
 IR/test_Word2Vec.py
 
+IR_analysis/
+
 GR/results/
 
 sklearn-env/
 utils/__pycache__
-
+utils/db_theme_selection/results/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
