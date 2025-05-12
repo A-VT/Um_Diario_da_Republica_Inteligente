@@ -4,100 +4,136 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Development Interface</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 50px;
-        }
-        input, button {
-            padding: 10px;
-            font-size: 16px;
-        }
-        input {
-            width: 300px;
-        }
-        .checkbox-group, .slider-group {
-            margin: 20px 0;
-        }
-        #response {
-            white-space: pre-wrap; /* Preserve line breaks */
-            margin-top: 20px;
-            font-family: monospace;
-            text-align: left;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        #progress {
-            font-size: 18px;
-            margin-top: 20px;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
 </head>
-<body>
-    <h1>Development Interface</h1>
+<body>    
+    <section class="horizontal-form">
+        <!-- Intro view shown initially -->
+        <div id="formIntro">
+            <h1>Smart Legal Search for Portuguese Law</h1>
+            <p>Developed as part of a thesis project, this tool aims to help legal professionals and the general public to explore Portuguese legislation with ease. You need only ask a legal question, and the system uses standard Information Retrieval (IR) techniques and models to find the most relevant documents to your question from a consolidated legal corpus (sourced through Diário da República as of January 2025). Then, using a Retrieval-Augmented Generation (RAG) approach, a large language model summarizes and answers your question based on the sources found.
+            <i><u>Click "Next" to begin.</u></i></p>
+            <button id="nextBtn">Next</button>
+        </div>
     
-    <input type="text" id="textInput" placeholder="Enter text here">
-    
-    <div class="checkbox-group">
-        <label><input type="checkbox" name="irModel" value="TF-IDF"> TF-IDF</label>
-        <label><input type="checkbox" name="irModel" value="WORD2VEC"> WORD2VEC</label>
-        <label><input type="checkbox" name="irModel" value="BM25"> BM25</label>
-        <label><input type="checkbox" name="irModel" value="WIKI_WORD2VEC"> WIKI WORD2VEC</label>
-    </div>
+        <!-- Actual form view hidden initially -->
+        <div id="fullForm" style="display: none;">
+            <div id="formFields">
+                <fieldset class="model-group">
+                    <legend>Contexto:</legend>
+                    <textarea id="textInput" name="text" placeholder="O que deseja saber da legislação portuguesa?"></textarea>
+                </fieldset>
+                
+                <fieldset class="model-group">
+                    <legend>Models:</legend>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" name="irModel" value="TF-IDF"> TF-IDF</label>
+                        <label><input type="checkbox" name="irModel" value="WORD2VEC"> WORD2VEC</label>
+                        <label><input type="checkbox" name="irModel" value="BM25"> BM25</label>
+                        <label><input type="checkbox" name="irModel" value="WIKI_WORD2VEC"> WIKI WORD2VEC</label>
+                    </div>
+                </fieldset>
 
-    <div class="slider-group">
-        <label for="nDocs">Number of Documents: <span id="nDocsValue">10</span></label><br>
-        <input type="range" id="nDocs" name="n_docs" min="1" max="15" value="10" 
-               oninput="document.getElementById('nDocsValue').innerText = this.value">
-    </div>
+                <div class="slider-group">
+                    <label for="nDocs"><b>Numero de Documentos: </b><span id="nDocsValue">10</span></label><br>
+                    <input type="range" id="nDocs" name="n_docs" min="1" max="15" value="10" 
+                        oninput="document.getElementById('nDocsValue').innerText = this.value">
+                </div>
 
-    <div class="checkbox-group">
-        <label><input type="checkbox" id="autoSelectKeywords" name="autoSelectKeywords"> Auto Select Keywords</label>
-    </div>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" id="autoSelectKeywords" name="autoSelectKeywords"> Auto-selecção de Palavras Chave</label>
+                </div>
+            </div>
+
+            <div class="form-buttons">
+                <button id="prevBtn" type="button">Previous</button>
+                <button id="toggleFormBtn">Hide Bar</button>
+                <button onclick="sendData()">Send</button>
+            </div>
+        </div>
+    </section>
     
-    <button onclick="sendData()">Send</button>
-    
-    <p id="progress">Progress:</p>
-    <pre id="response"></pre>
+    <section class="responses">
+        <div class="progress"></div>
+        <div id="response" class="response"></div>
+    </section>
 
     <script>
-        // Send data to the server
-        async function sendData() {
-            document.getElementById("response").innerText = ""; // Clear previous messages
+        const evtSource = new EventSource("/stream");
 
-            const userInput = document.getElementById("textInput").value.trim();
-            const nDocs = parseInt(document.getElementById("nDocs").value, 10);
+        evtSource.addEventListener("IR", (event) => {
+            const data = JSON.parse(event.data);
+            document.querySelector(".progress").innerText += data.message + "\n";
+        });
+
+        evtSource.addEventListener("GR", (event) => {
+            const data = JSON.parse(event.data);
+            document.querySelector(".progress").innerText += data.message + "\n";
+        });
+
+        evtSource.addEventListener("FINAL", (event) => {
+            const data = JSON.parse(event.data);
+            document.getElementById("response").innerText += data.message;
+        });
+
+        document.getElementById("nextBtn").addEventListener("click", () => {
+            document.getElementById("formIntro").style.display = "none";
+            document.getElementById("fullForm").style.display = "flex";
+        });
+
+        document.getElementById("prevBtn").addEventListener("click", () => {
+            document.getElementById("fullForm").style.display = "none";
+            document.getElementById("formIntro").style.display = "block";
+        });
+
+        document.getElementById("toggleFormBtn").addEventListener("click", () => {
+            const formFields = document.getElementById("formFields");
+            const toggleBtn = document.getElementById("toggleFormBtn");
+
+            if (formFields.style.display === "none") {
+                formFields.style.display = "flex";
+                toggleBtn.innerText = "Hide Bar";
+            } else {
+                formFields.style.display = "none";
+                toggleBtn.innerText = "Show Bar";
+            }
+        });
+
+        function sendData() {
+            const text = document.getElementById("textInput").value;
+            const checkboxes = document.querySelectorAll('input[name="irModel"]:checked');
+            const models = Array.from(checkboxes).map(cb => cb.value);
+            const n_docs = document.getElementById("nDocs").value;
             const autoSelectKeywords = document.getElementById("autoSelectKeywords").checked;
 
-            let selectedModels = [];
-            document.querySelectorAll("input[name='irModel']:checked").forEach(checkbox => {
-                selectedModels.push(checkbox.value);
-            });
+            if (!text || models.length === 0) {
+                alert("Por favor, insira uma pergunta e selecione pelo menos um modelo.");
+                return;
+            }
 
-            const requestData = {
-                text: userInput,
-                models: selectedModels,
-                n_docs: nDocs,
+            const payload = {
+                text: text,
+                models: models,
+                n_docs: parseInt(n_docs),
                 auto_select_keywords: autoSelectKeywords
             };
 
-            try {
-                const response = await fetch("/send", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify(requestData)
-                });
-
-                const data = await response.json();
-                document.getElementById("response").innerText += "\n" + data.answer;
-            } catch (error) {
-                console.error("Error:", error);
-                document.getElementById("response").innerText = "Error sending request.";
-            }
+            fetch("/send", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Request sent:", data);
+                document.querySelector(".progress").innerText += "A processar... \n";
+            })
+            .catch(error => {
+                console.error("Error sending data:", error);
+                document.querySelector(".progress").innerText += "Erro ao enviar pedido. \n";
+            });
         }
     </script>
 </body>

@@ -44,7 +44,8 @@ def elastic_query_search(search_terms, n_docs):
                 "db_ID": str(source.get("db_ID", "")),
                 "Titulo": source.get("Titulo", ""),
                 "Sumario": source.get("Sumario", ""),
-                "score": hit["_score"]
+                "score": hit["_score"],
+                "terms" : search_query
             })
         return results
     except Exception as e:

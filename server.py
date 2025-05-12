@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, Response
+from flask import Flask, request, jsonify, render_template, Response, current_app
 from flask_sse import sse
 
 from Interface import comm_req
@@ -12,13 +12,12 @@ from utils.progress_messenger import ProgressMessenger
 import threading
 import time
 
-app = Flask(__name__, template_folder='Interface/templates')
-app.config["REDIS_URL"] = "redis://localhost"
+app = Flask(__name__, template_folder='Interface/templates', static_folder='Interface/static')
+app.config["REDIS_URL"] = "redis://localhost:6379"
 
 app.register_blueprint(sse, url_prefix='/stream')
 
 current_messenger = None
-
 
 @app.route('/')
 def home():
@@ -26,45 +25,55 @@ def home():
 
 @app.route('/send', methods=['POST'])
 def send():
-    global current_messenger
-
     data = request.get_json()
     request_data = comm_req.QueryRequest(**data)
 
-    input_note = f"You sent: {request_data.text}. Models: {', '.join(request_data.models)}. Docs: {request_data.n_docs}. Auto Select: {request_data.auto_select_keywords}"
+    def background_task():
+        try:
+            # Use the global app context
+            with app.app_context():
+                progress = ProgressMessenger()
 
-    # Initialize the ProgressMessenger for IR
-    #current_messenger = ProgressMessenger(module_name="IR")
+                dir_answers = "IR_analysis/admin_pub"
 
-    # IR Module
-    IR_Module = ir_module.IRSystem() #mess=current_messenger
-    results = IR_Module.search(
-        user_query=request_data.text,
-        user_models=request_data.models,
-        user_nres=request_data.n_docs,
-        user_autokeywords=request_data.auto_select_keywords
-    )
-    
-    list_ids = IR_Module.get_result_ids(results)
+                progress.set_module("IR")
+                ir_sys = ir_module.IRSystem(progress, directory_answers=dir_answers)
+                results = ir_sys.search(
+                    user_query=request_data.text,
+                    user_models=request_data.models,
+                    user_nres=request_data.n_docs,
+                    user_autokeywords=request_data.auto_select_keywords
+                )
 
+                list_ids = ir_sys.get_result_ids(results)
+                file_handler = JSONFileHandler(f"{dir_answers}/IR_final_results.json")
+                file_handler.delete_results()
+                file_handler.save_results(results=results)
 
-    file_handler = JSONFileHandler("IR_analysis/parl_europeu/final_results.json")
-    file_handler.delete_results()
-    file_handler.save_results(results=results)
+                progress.set_module("GR")
+                gr_sys = gr_module.GRSystem(progress, list_doc_ids=list_ids, directory_answers="GR/results")
+                summary = gr_sys.get_summaries(user_query=request_data.text)
 
-    """ 
-    # GR Module (commented out for now)
-    GR_Module = gr_module.GRSystem(list_doc_ids=list_ids)
-    summary_response = GR_Module.get_summaries(user_query=request_data.text)
+                file_handler = JSONFileHandler(f"{dir_answers}/GR_final_results.json")
+                file_handler.delete_results()
+                file_handler.save_results(results=summary)
 
-    file_handler = JSONFileHandler("GR/results/temp_results.json")
-    file_handler.delete_results()
-    file_handler.save_results(results=summary_response)
+                # Final response message
+                sse.publish(
+                    { "message": summary },
+                    type="FINAL"
+                )
 
-    return jsonify(comm_req.QueryResponse(answer=summary_response).model_dump())
-    """
+        except Exception as e:
+            print("Error:", e)
+            with app.app_context():
+                sse.publish(
+                    { "message": f"[ERROR] {str(e)}" },
+                    type="FINAL"
+                )
 
-    return jsonify(comm_req.QueryResponse(answer=input_note).model_dump())
+    threading.Thread(target=background_task).start()
+    return jsonify({"status": "Processing started"})
 
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)

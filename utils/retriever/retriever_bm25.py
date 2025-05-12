@@ -7,11 +7,12 @@ import os
 from utils.json_file_handler import JSONFileHandler
 
 class BM25Retriever:
-    def __init__(self, model_file="./IR/models/bm25_model.pkl"):
+    def __init__(self, model_file="./IR/models/bm25_model.pkl", directory_answers="IR/results"):
         self.model_file = model_file
         self.model = None
         self.documents = None
         self.corpus = None
+        self.directory_answers = directory_answers
 
     def build_model(self, documents):
         """Builds the BM25 model using the provided documents."""
@@ -87,8 +88,7 @@ class BM25Retriever:
 
         print("Results obtained for BM25.")
 
-        output_file = "IR_analysis/parl_europeu" #IR/results
-        file_handler = JSONFileHandler(f"{output_file}/bm25_results.json")
+        file_handler = JSONFileHandler(f"{self.directory_answers}/bm25_results.json")
         file_handler.delete_results()
         file_handler.save_results(results=query_results)
 

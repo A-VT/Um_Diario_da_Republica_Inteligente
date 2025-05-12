@@ -8,13 +8,14 @@ import numpy as np
 import os
 
 class WikiWord2VecRetriever:
-    def __init__(self, model_file="./IR/models/model_300_20_sg.wv"):
+    def __init__(self, model_file="./IR/models/model_300_20_sg.wv", directory_answers="IR/results"):
         self.nlp = spacy.load("pt_core_news_md")
         self.model_file = model_file
         self.model = None
         self.documents = None
         self.document_vectors = {}
-        self.n_terms = 1
+        self.n_terms = 1        
+        self.directory_answers = directory_answers
 
     def _tokenize(self, text):
         doc = self.nlp(text.lower())
@@ -162,8 +163,7 @@ class WikiWord2VecRetriever:
         #balanced = self._balance_results(query_results)
         print("Results obtained for Wiki_Word2Vec.")
 
-        output_file = "IR_analysis/parl_europeu" #IR/results
-        file_handler = JSONFileHandler(f"{output_file}/wiki_word2vec_results.json")
+        file_handler = JSONFileHandler(f"{self.directory_answers}/wiki_word2vec_results.json")
         file_handler.delete_results()
         file_handler.save_results(results=results)
 

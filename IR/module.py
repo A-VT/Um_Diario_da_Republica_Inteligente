@@ -12,14 +12,16 @@ from enum import Enum
 import os
 
 from utils.json_file_handler import JSONFileHandler
-from utils.progress_messenger import ProgressMessenger
 from flask_sse import sse
 
 class IRSystem:
-    def __init__(self):
+    def __init__(self, prog_messenger, directory_answers = "IR/results"):
+        self.prog_messenger = prog_messenger
+
         self.client, self.db, self.collection_dados, self.collection_metadados = self._connect_to_db()
         self.documents = self._prep_model()
-        self.output_directory = "IR_analysis/parl_europeu" #IR/results
+        self.directory_answers = directory_answers
+        
 
     def _connect_to_db(self):
         load_dotenv()
@@ -31,6 +33,7 @@ class IRSystem:
             return list(self.collection_metadados.find({}, {"_id": 1, "db_ID": 1, "Titulo": 1, "Sumario": 1}))
         except Exception as e:
             print(f"Error fetching documents: {e}")
+            self.prog_messenger.send(f"Error fetching documents: {e}")
             return []
 
     def _preprocess_documents(self, documents):
@@ -62,7 +65,7 @@ class IRSystem:
         for model_type in user_models:
             retriever_class = model_to_retriever.get(model_type)
             if retriever_class:
-                retrievers[model_type] = retriever_class()
+                retrievers[model_type] = retriever_class(directory_answers=self.directory_answers)
             else:
                 print(f"Invalid model: {model_type}. Skipping...")
 
@@ -71,17 +74,31 @@ class IRSystem:
     def _retrieve_or_create_models(self, retrievers):
         for model_type, retriever in retrievers.items():
 
+            self.prog_messenger.send(f"Loading {model_type} model...")
             retriever.load_model()
             
             if retriever.model is None:
                 print(f"Building model for {model_type}...")
+                self.prog_messenger.send(f"Building model for {model_type} model...")
+
                 retriever.build_model(self.documents)
                 retriever.save_model()
 
         return retrievers
+    
+    def define_n_tasks(self, chosen_models ):
+        n_tasks = 3*len(chosen_models)
+        return n_tasks
+    
+    def _create_analysis_file(self, name_file, data):
+        file_handler = JSONFileHandler(f"{self.directory_answers}/{name_file}")
+        file_handler.delete_results()
+        file_handler.save_results(results=data)
 
     def search(self, user_query, user_models, user_autokeywords, user_nres):
         print("[IR] Selecting documents...")
+        self.prog_messenger.send(f"Selecting documents...")
+
         self.n_results = user_nres
 
         retrievers = self._init_retrievers(user_models)
@@ -91,14 +108,12 @@ class IRSystem:
         search_terms.update(preprocess_query(user_query, user_autokeywords))
         self.search_terms = list(set(search_terms))
 
-        file_handler = JSONFileHandler(f"{self.output_directory}/search_terms.json")
-        file_handler.delete_results()
-        file_handler.save_results(results=self.search_terms)
+        self._create_analysis_file("search_terms.json", self.search_terms)
 
         results = []
 
         for model_type, retriever in retrievers.items():
-            
+
             if model_type == ModelType.TF_IDF:
                 temp_results = retriever.find_most_similar(self.search_terms, user_nres)
             elif model_type == ModelType.BM25:
@@ -109,13 +124,17 @@ class IRSystem:
                 temp_results = retriever.find_most_similar(self.search_terms, self.documents, user_nres)
             else:
                 print(f"Cannot handle model {model_type}")
+                self.prog_messenger.send(f"Cannot handle model {model_type}")
                 continue
+
+            self.prog_messenger.send(f"Received temporary results from {model_type}.")
             
             # Aggregate results
             results = self._add_results(results, temp_results, model_type)
 
         # Balance results by average score and return the top results
         self._global_balance_results(results)
+        self.prog_messenger.send(f"Balanced final results.")
 
         #comparative searches
         self._mongo_direct_querying()
@@ -153,25 +172,21 @@ class IRSystem:
 
     def _mongo_direct_querying(self):
         print("[IR] Performing direct MongoDB search...")
+        self.prog_messenger.send(f"Performing direct MongoDB search...")
 
         mongo_results = mongo_text_search(
             collection_metadados=self.collection_metadados,
             search_terms=self.search_terms,
             n_docs=self.n_results
         )
-
-        file_handler = JSONFileHandler(f"{self.output_directory}/mongo_direct_querying.json")
-        file_handler.delete_results()
-        file_handler.save_results(results=mongo_results)
+        self._create_analysis_file("mongo_direct_querying.json", mongo_results)
 
     def _elastic_direct_querying(self):
         print("[IR] Performing an Elastic search...")
+        self.prog_messenger.send(f"Performing an Elastic search...")
 
         elastic_results = elastic_query_search(
             search_terms=self.search_terms,
             n_docs=self.n_results
         )
-
-        file_handler = JSONFileHandler(f"{self.output_directory}/elastic_direct_querying.json")
-        file_handler.delete_results()
-        file_handler.save_results(results=elastic_results)
+        self._create_analysis_file("elastic_direct_querying.json", elastic_results)

@@ -90,7 +90,8 @@ def mongo_text_search(collection_metadados, search_terms, n_docs):
                 "db_ID": str(doc.get("db_ID", "")),
                 "Titulo": doc.get("Titulo", ""),
                 "Sumario": doc.get("Sumario", ""),
-                "score": doc.get("score", 0)
+                "score": doc.get("score", 0),
+                "terms" : search_string
             })
         return results
     except Exception as e:

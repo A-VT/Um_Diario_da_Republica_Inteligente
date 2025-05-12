@@ -6,12 +6,13 @@ import joblib
 import os
 
 class TfidfRetriever:
-    def __init__(self, model_file="./IR/models/tfidf_model.pkl"):
+    def __init__(self, model_file="./IR/models/tfidf_model.pkl", directory_answers="IR/results"):
         self.model_file = model_file
         self.model = None
         self.tfidf_matrix = None
         self.documents = None
         self.corpus = None
+        self.directory_answers = directory_answers
 
     def build_model(self, documents):
         """Builds the TF-IDF model using the provided documents."""
@@ -122,8 +123,7 @@ class TfidfRetriever:
 
         print("Results obtained for TF-IDF.")
 
-        output_file = "IR_analysis/parl_europeu" #IR/results
-        file_handler = JSONFileHandler(f"{output_file}/tfidf_results.json")
+        file_handler = JSONFileHandler(f"{self.directory_answers}/tfidf_results.json")
         file_handler.delete_results()
         file_handler.save_results(results=query_results)
 

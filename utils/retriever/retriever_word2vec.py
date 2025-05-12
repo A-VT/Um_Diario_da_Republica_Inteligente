@@ -9,13 +9,15 @@ import numpy as np
 import logging
 
 class Word2VecRetriever:
-    def __init__(self, model_file="./IR/models/word2vec_model.model"):
+    def __init__(self, model_file="./IR/models/word2vec_model.model", directory_answers="IR/results"):
         self.nlp = spacy.load("pt_core_news_md")
         self.model_file = model_file
         self.model = None
         self.documents = None
         self.corpus = None
         self.document_vectors = {}
+        self.directory_answers = directory_answers
+
 
     def _tokenize(self, text):
         """Tokenizes text using spaCy's Portuguese model."""
@@ -247,8 +249,7 @@ class Word2VecRetriever:
         
         print("Results obtained for Word2Vec.")
 
-        output_file = "IR_analysis/parl_europeu" #IR/results
-        file_handler = JSONFileHandler(f"{output_file}/word2vec_results.json")
+        file_handler = JSONFileHandler(f"{self.directory_answers}/word2vec_results.json")
         file_handler.delete_results()
         file_handler.save_results(results=results)
 
