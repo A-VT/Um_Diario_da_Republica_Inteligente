@@ -22,7 +22,6 @@ def elastic_query_search(search_terms, n_docs):
 
     es = Elasticsearch(cloud_id=cloud_id, api_key=api_key)
 
-    # Join all search terms into a single string for multi_match
     search_query = " ".join(search_terms)
 
     query = {

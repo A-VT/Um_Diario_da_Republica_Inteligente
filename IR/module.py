@@ -113,6 +113,8 @@ class IRSystem:
         results = []
 
         for model_type, retriever in retrievers.items():
+            
+            self.prog_messenger.send(f"Gathering results for {model_type} model.")
 
             if model_type == ModelType.TF_IDF:
                 temp_results = retriever.find_most_similar(self.search_terms, user_nres)
@@ -124,7 +126,7 @@ class IRSystem:
                 temp_results = retriever.find_most_similar(self.search_terms, self.documents, user_nres)
             else:
                 print(f"Cannot handle model {model_type}")
-                self.prog_messenger.send(f"Cannot handle model {model_type}")
+                self.prog_messenger.send(f"Cannot handle model {model_type}.")
                 continue
 
             self.prog_messenger.send(f"Received temporary results from {model_type}.")
@@ -171,7 +173,7 @@ class IRSystem:
 
 
     def _mongo_direct_querying(self):
-        print("[IR] Performing direct MongoDB search...")
+        print("[IR] Performing direct MongoDB search.")
         self.prog_messenger.send(f"Performing direct MongoDB search...")
 
         mongo_results = mongo_text_search(
@@ -182,7 +184,7 @@ class IRSystem:
         self._create_analysis_file("mongo_direct_querying.json", mongo_results)
 
     def _elastic_direct_querying(self):
-        print("[IR] Performing an Elastic search...")
+        print("[IR] Performing an Elastic search.")
         self.prog_messenger.send(f"Performing an Elastic search...")
 
         elastic_results = elastic_query_search(

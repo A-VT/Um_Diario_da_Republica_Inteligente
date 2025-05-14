@@ -12,7 +12,7 @@ def mongo_regex_search(collection_metadados, search_terms, n_docs):
     """
     or_clauses = []
     for term in search_terms:
-        or_clauses.append({"Sumario": {"$regex": term, "$options": "i"}})  # Case insensitive
+        or_clauses.append({"Sumario": {"$regex": term, "$options": "i"}})
         or_clauses.append({"Titulo": {"$regex": term, "$options": "i"}})
 
     query = {"$or": or_clauses}
@@ -45,7 +45,6 @@ def mongo_text_search(collection_metadados, search_terms, n_docs):
     Returns:
         List of matching documents with relevance scores.
     """
-    # Ensure text index exists
     index_exists = False
     for index in collection_metadados.list_indexes():
         if index.get("weights") == {"Titulo": 1, "Sumario": 1} and index.get("key", {}).get("_fts") == "text":
@@ -57,20 +56,18 @@ def mongo_text_search(collection_metadados, search_terms, n_docs):
             collection_metadados.create_index(
                 [("Titulo", "text"), ("Sumario", "text")],
                 name="text_search_index",
-                default_language="portuguese",  # Optional: improve stemming/stopword handling
-                weights={"Titulo": 10, "Sumario": 2}  # Optional: boost title matches
+                default_language="portuguese",
+                weights={"Titulo": 10, "Sumario": 2}
             )
         except Exception as e:
             print(f"[MongoTextSearch] Failed to create text index: {e}")
             return []
 
-    # Convert list of search terms to a single space-separated string
     if isinstance(search_terms, list):
         search_string = " ".join(search_terms)
     else:
         search_string = str(search_terms)
 
-    # Perform the text search
     try:
         cursor = collection_metadados.find(
             {"$text": {"$search": search_string}},

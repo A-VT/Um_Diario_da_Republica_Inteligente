@@ -30,7 +30,6 @@ def send():
 
     def background_task():
         try:
-            # Use the global app context
             with app.app_context():
                 progress = ProgressMessenger()
 
@@ -58,7 +57,7 @@ def send():
                 file_handler.delete_results()
                 file_handler.save_results(results=summary)
 
-                # Final response message
+                
                 sse.publish(
                     { "message": summary },
                     type="FINAL"

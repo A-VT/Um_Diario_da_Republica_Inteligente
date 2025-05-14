@@ -7,17 +7,18 @@ from enum import Enum
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
 from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer
 
 from utils.json_file_handler import JSONFileHandler
 from utils.mongo_conn import connect_to_mongo
-from transformers import AutoTokenizer
 
 class ModelType(Enum):
     QWEN2_5__14b = "t3q-qwen2.5-14b-v1.0-e3"
 
-
 class GRSystem:
-    def __init__(self, prog_messenger, model=ModelType.QWEN2_5__14b, max_tokens=6000, list_doc_ids=None, k=10, chunk_size=200, chunk_overlap=50, directory_answers="GR/results"):
+    def __init__(self, prog_messenger, model=ModelType.QWEN2_5__14b, max_tokens=6000,
+                 list_doc_ids=None, k=10, chunk_size=200, chunk_overlap=50,
+                 directory_answers="GR/results"):
         self.prog_messenger = prog_messenger
 
         load_dotenv()
@@ -36,10 +37,9 @@ class GRSystem:
         self.retriever = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
         self.tokenizer = AutoTokenizer.from_pretrained("JungZoona/T3Q-qwen2.5-14b-v1.0-e3")
 
-        # Step 1: Load and chunk documents
-        raw_docs = self._get_contents()
-        self.chunks = self._chunk_documents(raw_docs)
-        self.embeddings = self.retriever.encode(self.chunks, convert_to_tensor=False)
+        self.parent_docs = self._get_contents()
+        self.child_chunks, self.child_to_parent = self._chunk_documents(self.parent_docs)
+        self.embeddings = self.retriever.encode(self.child_chunks, convert_to_tensor=False)
         self.index = self._build_faiss_index(self.embeddings)
 
     def _connect_to_db(self):
@@ -48,96 +48,91 @@ class GRSystem:
     def _get_contents(self):
         client, db, collection_dados, _ = self._connect_to_db()
         docs = []
-
         for doc_id in self.list_doc_ids:
             try:
-                object_id = ObjectId(doc_id)
-                result = collection_dados.find_one({"_id": object_id})
-                content = result.get("Content") if result else None
-                if content:
-                    docs.append(content)
+                oid = ObjectId(doc_id)
+                res = collection_dados.find_one({"_id": oid})
+                if res and res.get("Content"):
+                    docs.append(res["Content"])
                 else:
-                    print(f"[WARN] No content found for ID: {doc_id}")
-                    self.prog_messenger.send(f"No content found for ID: {doc_id}")
-            except (InvalidId, Exception) as e:
-                print(f"[ERROR] {doc_id} - {e}")
-                self.prog_messenger.send(f"{doc_id} - {e}")
-
-        # Optional save
-        handler = JSONFileHandler(f"{self.directory_answers}/docs")
-        handler.delete_results()
-        handler.save_results(docs)
+                    self.prog_messenger.send(f"No content for ID: {doc_id}")
+            except Exception as e:
+                self.prog_messenger.send(f"Error fetching {doc_id}: {e}")
+        JSONFileHandler(f"{self.directory_answers}/docs").save_results(docs)
         return docs
 
     def _chunk_documents(self, documents):
-        chunks = []
-        for doc in documents:
+        child_chunks, child_to_parent = [], []
+        for idx, doc in enumerate(documents):
             tokens = doc.split()
             for i in range(0, len(tokens), self.chunk_size - self.chunk_overlap):
                 chunk = " ".join(tokens[i:i + self.chunk_size])
-                chunks.append(chunk)
-        return chunks
-    
-    def _retrieve_chunks(self, query):
-        query_vec = self.retriever.encode([query])[0]
-        D, I = self.index.search(np.array([query_vec]).astype("float32"), self.k)
-        return [self.chunks[i] for i in I[0]]
+                child_chunks.append(chunk)
+                child_to_parent.append(idx)
+        return child_chunks, child_to_parent
 
     def _build_faiss_index(self, embeddings):
-        dim = len(embeddings[0])
+        dim = embeddings.shape[1] if hasattr(embeddings, 'shape') else len(embeddings[0])
         index = faiss.IndexFlatL2(dim)
         index.add(np.array(embeddings).astype("float32"))
         return index
-    
-    def _count_tokens(text):
+
+    def _count_tokens(self, text):
         return len(self.tokenizer.encode(text, add_special_tokens=False))
 
+    def _retrieve_parent_docs(self, query):
+        vec = self.retriever.encode([query])[0]
+        D, I = self.index.search(np.array([vec]).astype("float32"), self.k)
+        parents = {self.child_to_parent[i] for i in I[0]}
+        return [self.parent_docs[i] for i in parents]
+
+    def _build_context(self, parent_docs):
+        max_model_ctx = 4096
+        reserve = 1000
+        available = max_model_ctx - reserve
+        context_texts, total = [], 0
+        for doc in parent_docs:
+            tok = self._count_tokens(doc)
+            if total + tok > available:
+                break
+            context_texts.append(doc)
+            total += tok
+        return "\n\n".join(context_texts)
+
     def get_summaries(self, user_query):
-        print("[GR] Preparing LLM response...")
+        print("[GR] Generating with token-aware Parent-Document RAG...")
+        parents = self._retrieve_parent_docs(user_query)
+        context = self._build_context(parents)
 
-        relevant_chunks = self._retrieve_chunks(user_query)
-        context = "\n\n".join(relevant_chunks)
+        q = user_query if "?" in user_query else f"O que sabes sobre o tema '{user_query}'?"
+        prompt = f"""
+És um assistente jurídico altamente qualificado, especializado em análise legal detalhada.
 
-        processed_user_query = ""
-        if "?" in user_query:
-            processed_user_query = user_query
-        else:
-            processed_user_query = f"O que sabes sobre o tema '{user_query}'?"
-
-        system_prompt = f"""
-És um assistente jurídico altamente qualificado.
-
-Deverás responder de forma detalhada à pergunta dada, de forma estruturada e profunda, e utilizando o contexto legal fornecido. Inclui:
-
-- Definições legais relevantes
-- Citações completas de artigos e cláusulas
-- Interpretações e implicações legais
-- Diferenças entre normas similares
+Deverás responder de forma exaustiva e meticulosa, fornecendo:
+- Todas as definições legais relevantes
+- Citações completas de normas, artigos e cláusulas
+- Interpretações jurídicas e implicações práticas
+- Distinções entre normas parecidas
 - Jurisprudência relevante (se aplicável)
+- Exemplos concretos, quando apropriado
 
-Mantém uma linguagem técnica e clara, em Português de Portugal.
+Mantém uma linguagem técnica e clara, em Português de Portugal. Não assumes nem inventas factos não contidos no contexto.
+Se necessário, a resposta poderá conter tags html para headers, bold, italics e underline. 
 
 Contexto:
 {context}
 
-Pergunta: {processed_user_query}"""
+Pergunta: {q}"""
 
+        JSONFileHandler(f"{self.directory_answers}/llm_content.json").save_results(prompt)
         headers = {"Content-Type": "application/json"}
-        data = {
-            "model": self.model.value,
-            "messages": [{"role": "system", "content": system_prompt}],
-            "temperature": 0.7,
-            "max_tokens": self.max_tokens,
-            "top_p": 0.95,
-            "stream": False
-        }
-
-        file_handler = JSONFileHandler(f"{self.directory_answers}/llm_content.json")
-        file_handler.delete_results()
-        file_handler.save_results(results=system_prompt)
-
-        response = requests.post(self.LLM_url, json=data, headers=headers)
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"].strip()
-        else:
-            return f"Error: {response.status_code} - {response.text}"
+        data = {"model": self.model.value,
+                "messages": [{"role": "system", "content": prompt}],
+                "temperature": 0.7,
+                "max_tokens": self.max_tokens,
+                "top_p": 0.95,
+                "stream": False}
+        res = requests.post(self.LLM_url, json=data, headers=headers)
+        if res.status_code == 200:
+            return res.json()["choices"][0]["message"]["content"].strip()
+        return f"Error: {res.status_code} - {res.text}"

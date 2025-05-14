@@ -10,13 +10,13 @@
     <section class="horizontal-form">
         <!-- Intro view shown initially -->
         <div id="formIntro">
-            <h1>Smart Legal Search for Portuguese Law</h1>
+            <h1>Um Diário da República Inteligente</h1>
             <p>Developed as part of a thesis project, this tool aims to help legal professionals and the general public to explore Portuguese legislation with ease. You need only ask a legal question, and the system uses standard Information Retrieval (IR) techniques and models to find the most relevant documents to your question from a consolidated legal corpus (sourced through Diário da República as of January 2025). Then, using a Retrieval-Augmented Generation (RAG) approach, a large language model summarizes and answers your question based on the sources found.
             <i><u>Click "Next" to begin.</u></i></p>
             <button id="nextBtn">Next</button>
         </div>
     
-        <!-- Actual form view hidden initially -->
+        <!-- Actual form view -->
         <div id="fullForm" style="display: none;">
             <div id="formFields">
                 <fieldset class="model-group">
@@ -72,8 +72,10 @@
         });
 
         evtSource.addEventListener("FINAL", (event) => {
+            document.querySelector(".progress").innerText = "";
+
             const data = JSON.parse(event.data);
-            document.getElementById("response").innerText += data.message;
+            document.getElementById("response").innerText = data.message;
         });
 
         document.getElementById("nextBtn").addEventListener("click", () => {
