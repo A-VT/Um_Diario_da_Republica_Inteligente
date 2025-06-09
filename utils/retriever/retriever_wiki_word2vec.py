@@ -8,7 +8,7 @@ import numpy as np
 import os
 
 class WikiWord2VecRetriever:
-    def __init__(self, model_file="./IR/models/model_300_20_sg.wv", directory_answers="IR/results"):
+    def __init__(self, directory_answers, model_file="./IR/models/model_300_20_sg.wv" ):
         self.nlp = spacy.load("pt_core_news_md")
         self.model_file = model_file
         self.model = None

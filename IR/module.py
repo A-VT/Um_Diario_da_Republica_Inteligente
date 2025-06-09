@@ -3,20 +3,24 @@ from utils.retriever.retriever_word2vec import Word2VecRetriever
 from utils.retriever.retriever_tfidf import TfidfRetriever
 from utils.retriever.retriever_bm25 import BM25Retriever
 from utils.retriever.retriever_wiki_word2vec import WikiWord2VecRetriever
+from utils.retriever.retriever_sbert import SbertRetriever
+
 from utils.mongo_conn import connect_to_mongo
 from utils.retriever.process_queries import preprocess_query
 from utils.IR_direct_querying.IR_mongo_query import mongo_text_search
 from utils.IR_direct_querying.IR_elastic_query import elastic_query_search
 from dotenv import load_dotenv
-from enum import Enum
 import os
 
+from utils.progress_messenger import ProgressMessenger
+from utils.llm_communicator import LLMCommunicator
 from utils.json_file_handler import JSONFileHandler
-from flask_sse import sse
+
 
 class IRSystem:
-    def __init__(self, prog_messenger, directory_answers = "IR/results"):
+    def __init__(self, directory_answers, prog_messenger:ProgressMessenger, llm_client:LLMCommunicator):
         self.prog_messenger = prog_messenger
+        self.llm = llm_client
 
         self.client, self.db, self.collection_dados, self.collection_metadados = self._connect_to_db()
         self.documents = self._prep_model()
@@ -51,7 +55,7 @@ class IRSystem:
         raw_documents = self._fetch_documents()
         return self._preprocess_documents(raw_documents)
 
-    def _init_retrievers(self, user_models):
+    def _init_retrievers(self, user_models:list):
         self.n_models = len(user_models)
         retrievers = {}
 
@@ -59,7 +63,8 @@ class IRSystem:
             ModelType.TF_IDF: TfidfRetriever,
             ModelType.WORD2VEC: Word2VecRetriever,
             ModelType.BM25: BM25Retriever,
-            ModelType.WIKI_WORD2VEC: WikiWord2VecRetriever
+            ModelType.WIKI_WORD2VEC: WikiWord2VecRetriever,
+            ModelType.SBERT: SbertRetriever,
         }
 
         for model_type in user_models:
@@ -85,10 +90,6 @@ class IRSystem:
                 retriever.save_model()
 
         return retrievers
-    
-    def define_n_tasks(self, chosen_models ):
-        n_tasks = 3*len(chosen_models)
-        return n_tasks
     
     def _create_analysis_file(self, name_file, data):
         file_handler = JSONFileHandler(f"{self.directory_answers}/{name_file}")
@@ -116,14 +117,10 @@ class IRSystem:
             
             self.prog_messenger.send(f"Gathering results for {model_type} model.")
 
-            if model_type == ModelType.TF_IDF:
-                temp_results = retriever.find_most_similar(self.search_terms, user_nres)
-            elif model_type == ModelType.BM25:
-                temp_results = retriever.find_most_similar(self.search_terms, user_nres)
-            elif model_type == ModelType.WORD2VEC:
-                temp_results = retriever.find_most_similar(self.search_terms, self.documents, user_nres)
-            elif model_type == ModelType.WIKI_WORD2VEC:
-                temp_results = retriever.find_most_similar(self.search_terms, self.documents, user_nres)
+            if model_type in {ModelType.TF_IDF, ModelType.BM25, ModelType.SBERT}:
+                temp_results = retriever.find_most_similar(self.search_terms, self.n_results)
+            elif model_type in {ModelType.WORD2VEC, ModelType.WIKI_WORD2VEC}:
+                temp_results = retriever.find_most_similar(self.search_terms, self.documents, self.n_results)            
             else:
                 print(f"Cannot handle model {model_type}")
                 self.prog_messenger.send(f"Cannot handle model {model_type}.")
@@ -169,11 +166,11 @@ class IRSystem:
 
     def get_result_ids(self, results):
         return [result["db_ID"] for result in results if "db_ID" in result]
-    
+
+
 
 
     def _mongo_direct_querying(self):
-        print("[IR] Performing direct MongoDB search.")
         self.prog_messenger.send(f"Performing direct MongoDB search...")
 
         mongo_results = mongo_text_search(
@@ -184,7 +181,6 @@ class IRSystem:
         self._create_analysis_file("mongo_direct_querying.json", mongo_results)
 
     def _elastic_direct_querying(self):
-        print("[IR] Performing an Elastic search.")
         self.prog_messenger.send(f"Performing an Elastic search...")
 
         elastic_results = elastic_query_search(

@@ -12,7 +12,6 @@ def connect_to_mongo():
         db = client['DiarioRepublica']
         collection_dados = db['dados']
         collection_metadados = db['metadados']
-        print("Connected to MongoDB.")
         return client, db, collection_dados, collection_metadados
     except Exception as e:
         print(f"Error connecting to MongoDB: {e}")
@@ -26,7 +25,6 @@ def connect_to_mongo(mongo_user, mongo_password):
         db = client['DiarioRepublica']
         collection_dados = db['dados']
         collection_metadados = db['metadados']
-        print("Connected to MongoDB.")
         return client, db, collection_dados, collection_metadados
     except Exception as e:
         print(f"Error connecting to MongoDB: {e}")

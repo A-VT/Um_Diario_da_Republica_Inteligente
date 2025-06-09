@@ -1,11 +1,11 @@
-import nltk
-from nltk.corpus import wordnet
 from nltk.stem import WordNetLemmatizer
-import yake
+from nltk.corpus import wordnet
+from dotenv import load_dotenv
+import requests
 import spacy
-
-
-OUTPUT_FILE = "./IR/results/clean_query.json"
+import nltk
+import yake
+import os
 
 nltk.download('wordnet')
 nltk.download('omw-1.4')
@@ -65,3 +65,87 @@ def preprocess_query(query, use_yake=True):
     #print(f"[IR] preprocess_3: {list(set(final_keywords))}")
     
     return list(set(final_keywords))
+
+
+def process_user_query(user_query, llm_communicator):
+    system_prompt = f"""
+Estás encarregado de interpretar perguntas de utilizadores relativas a documentos legislativos portugueses.
+
+Recebes perguntas em linguagem natural e deves extrair delas:
+- a intenção principal de pesquisa ("query")
+- quaisquer filtros estruturados com base nos campos dos documentos
+- uma explicação ("reasoning") da tua interpretação
+
+### Campos disponíveis nos documentos:
+- ID: código da lei (ex: "Lei n.º 4/85")
+- Titulo: título completo
+- Sumario: resumo da lei
+- Data_ultima_modificacao: data da última modificação no formato YYYY-MM-DD
+- Modificacao: referência do Diário da República
+- Url: link para o documento
+
+### Objetivo:
+Converter perguntas em JSON estruturado com os seguintes campos:
+- "query": intenção principal (ex: "leis sobre remuneração de cargos políticos")
+- "filters": dicionário com chaves como "Data_ultima_modificacao", "Titulo", "ID", etc.
+- "reasoning": explicação do teu raciocínio
+
+### Exemplos:
+
+Input: "Mostra-me todas as leis sobre divórcio e guarda de menores."
+Output:
+{{
+  "query": "leis sobre divórcio e guarda de menores",
+  "filters": {{
+    "$match": {{
+      "$text": {{
+        "$search": "\\"divórcio\\" \\"guarda de menores\\""
+      }}
+    }}
+  }},
+  "reasoning": "A pergunta indica interesse por leis sobre divórcio e leis sobre guarda de menores."
+}}
+
+Input: "Decreto-Lei 44 2011, Lei n.º 82-D/2014"
+Output:
+{{
+  "query": "leis específicas mencionadas",
+  "filters": {{
+    "$match": {{
+      "$or": [
+        {{
+          "$and": [
+            {{ "ID": {{ "$regex": "Decreto-Lei", "$options": "i" }} }},
+            {{ "ID": {{ "$regex": "44", "$options": "i" }} }},
+            {{ "ID": {{ "$regex": "2011", "$options": "i" }} }}
+          ]
+        }},
+        {{
+          "$and": [
+            {{ "ID": {{ "$regex": "Lei", "$options": "i" }} }},
+            {{ "ID": {{ "$regex": "82", "$options": "i" }} }},
+            {{ "ID": {{ "$regex": "D", "$options": "s" }} }},
+            {{ "ID": {{ "$regex": "2014", "$options": "i" }} }}
+          ]
+        }}
+      ]
+    }}
+  }},
+  "reasoning": "A pergunta indica interesse por leis específicas mencionadas pelo utilizador."
+}}
+
+## Contexto:
+Input: "{user_query}"
+Output:
+"""
+
+    response = llm_communicator.generate(
+        prompt=system_prompt,
+        temperature=0.0,
+        top_p=0.9
+    )
+
+    if response is not None:
+        return response
+    else:
+        return "Error: LLM request failed."

@@ -31,6 +31,7 @@
                         <label><input type="checkbox" name="irModel" value="WORD2VEC"> WORD2VEC</label>
                         <label><input type="checkbox" name="irModel" value="BM25"> BM25</label>
                         <label><input type="checkbox" name="irModel" value="WIKI_WORD2VEC"> WIKI WORD2VEC</label>
+                        <label><input type="checkbox" name="irModel" value="SBERT"> SBERT</label>
                     </div>
                 </fieldset>
 
@@ -56,6 +57,7 @@
     <section class="responses">
         <div class="progress"></div>
         <div id="response" class="response"></div>
+        <div id="references"></div>
     </section>
 
     <script>
@@ -73,9 +75,22 @@
 
         evtSource.addEventListener("FINAL", (event) => {
             document.querySelector(".progress").innerText = "";
-
             const data = JSON.parse(event.data);
-            document.getElementById("response").innerText = data.message;
+
+            document.getElementById("response").innerText = data.summary;
+
+            // fill the references (now document IDs)
+            const refDiv = document.getElementById("references");
+            refDiv.innerHTML = "<b> Referências </b>";
+            if (Array.isArray(data.document_ids)) {
+                const ul = document.createElement("ul");
+                data.document_ids.forEach(id => {
+                    const li = document.createElement("li");
+                    li.innerText = id;
+                    ul.appendChild(li);
+                });
+                refDiv.appendChild(ul);
+            }
         });
 
         document.getElementById("nextBtn").addEventListener("click", () => {
@@ -107,6 +122,7 @@
             const models = Array.from(checkboxes).map(cb => cb.value);
             const n_docs = document.getElementById("nDocs").value;
             const autoSelectKeywords = document.getElementById("autoSelectKeywords").checked;
+            const previousResponses = document.getElementById("response").innerText;
 
             if (!text || models.length === 0) {
                 alert("Por favor, insira uma pergunta e selecione pelo menos um modelo.");
@@ -117,7 +133,8 @@
                 text: text,
                 models: models,
                 n_docs: parseInt(n_docs),
-                auto_select_keywords: autoSelectKeywords
+                auto_select_keywords: autoSelectKeywords,
+                previous_responses: previousResponses
             };
 
             fetch("/send", {
@@ -129,8 +146,21 @@
             })
             .then(response => response.json())
             .then(data => {
-                console.log("Request sent:", data);
                 document.querySelector(".progress").innerText += "A processar... \n";
+                document.getElementById("response").innerText = data.summary || "";
+
+                // Render document_ids
+                const referencesDiv = document.getElementById("references");
+                referencesDiv.innerHTML = "<b> Referências </b>";
+                if (Array.isArray(data.document_ids)) {
+                    const ul = document.createElement("ul");
+                    data.document_ids.forEach(id => {
+                        const li = document.createElement("li");
+                        li.innerText = id;
+                        ul.appendChild(li);
+                    });
+                    referencesDiv.appendChild(ul);
+                }
             })
             .catch(error => {
                 console.error("Error sending data:", error);

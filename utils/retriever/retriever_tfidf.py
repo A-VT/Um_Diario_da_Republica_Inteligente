@@ -6,7 +6,7 @@ import joblib
 import os
 
 class TfidfRetriever:
-    def __init__(self, model_file="./IR/models/tfidf_model.pkl", directory_answers="IR/results"):
+    def __init__(self, directory_answers, model_file="./IR/models/tfidf_model.pkl"):
         self.model_file = model_file
         self.model = None
         self.tfidf_matrix = None

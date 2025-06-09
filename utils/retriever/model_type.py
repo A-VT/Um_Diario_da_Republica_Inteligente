@@ -3,6 +3,7 @@ from .retriever_bm25 import BM25Retriever
 from .retriever_word2vec import Word2VecRetriever
 from .retriever_tfidf import TfidfRetriever
 from .retriever_wiki_word2vec import WikiWord2VecRetriever
+from .retriever_sbert import SbertRetriever
 
 class ModelType(str, Enum):
     """
@@ -16,6 +17,8 @@ class ModelType(str, Enum):
     WORD2VEC = "WORD2VEC"
     BM25 = "BM25"
     WIKI_WORD2VEC = "WIKI_WORD2VEC"
+    FAISS = "FAISS"
+    SBERT = "SBERT"
 
     def get_retriever(self):
         retriever_classes = {
@@ -23,5 +26,6 @@ class ModelType(str, Enum):
             ModelType.WORD2VEC: Word2VecRetriever(),
             ModelType.BM25: BM25Retriever(),
             ModelType.WIKI_WORD2VEC: WikiWord2VecRetriever(),
+            ModelType.SBERT: SbertRetriever()
         }
         return retriever_classes[self]()

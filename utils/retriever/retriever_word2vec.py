@@ -9,7 +9,7 @@ import numpy as np
 import logging
 
 class Word2VecRetriever:
-    def __init__(self, model_file="./IR/models/word2vec_model.model", directory_answers="IR/results"):
+    def __init__(self, directory_answers, model_file="./IR/models/word2vec_model.model"):
         self.nlp = spacy.load("pt_core_news_md")
         self.model_file = model_file
         self.model = None

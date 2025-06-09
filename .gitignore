@@ -9,7 +9,9 @@ IR/results/
 IR/models
 IR/test_Word2Vec.py
 
-IR_analysis/
+faiss_index/
+
+Analysis/
 
 GR/results/
 

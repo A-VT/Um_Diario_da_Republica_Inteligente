@@ -1,110 +1,170 @@
+# GR/module.py
 import os
-import requests
+import json
 import faiss
+import torch
 import numpy as np
-from dotenv import load_dotenv
-from enum import Enum
 from bson.objectid import ObjectId
-from bson.errors import InvalidId
 from sentence_transformers import SentenceTransformer
+from concurrent.futures import ThreadPoolExecutor
 from transformers import AutoTokenizer
+from dotenv import load_dotenv
 
-from utils.json_file_handler import JSONFileHandler
 from utils.mongo_conn import connect_to_mongo
+from utils.progress_messenger import ProgressMessenger
+from utils.llm_communicator import LLMCommunicator
 
-class ModelType(Enum):
-    QWEN2_5__14b = "t3q-qwen2.5-14b-v1.0-e3"
+load_dotenv()
 
 class GRSystem:
-    def __init__(self, prog_messenger, model=ModelType.QWEN2_5__14b, max_tokens=6000,
-                 list_doc_ids=None, k=10, chunk_size=200, chunk_overlap=50,
-                 directory_answers="GR/results"):
+    def __init__(
+        self,
+        directory_answers: str,
+        prog_messenger: ProgressMessenger,
+        llm_client: LLMCommunicator,
+        list_doc_ids=None,
+        k=10,
+        chunk_size=200,
+        chunk_overlap=50,
+    ):
         self.prog_messenger = prog_messenger
-
-        load_dotenv()
-        self.LLM_url = os.getenv("API_ENDPOINT")
-        self.mongo_user = os.getenv("MONGO_USER")
-        self.mongo_password = os.getenv("MONGO_PASSWORD")
-
-        self.model = model
-        self.max_tokens = max_tokens
+        self.llm = llm_client
         self.k = k
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.list_doc_ids = list_doc_ids or []
         self.directory_answers = directory_answers
 
-        self.retriever = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-        self.tokenizer = AutoTokenizer.from_pretrained("JungZoona/T3Q-qwen2.5-14b-v1.0-e3")
+        # Connect once and store both collections
+        self.client, self.db, self.coll, self.coll_meta = self._connect_to_db()
 
+        # Device selection
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.prog_messenger.send(
+            f"{'CUDA available' if self.device=='cuda' else 'CUDA not available'}. "
+            f"Using {torch.cuda.get_device_name(0) if self.device=='cuda' else 'CPU'}."
+        )
+
+        # Load encoder & tokenizer
+        self.retriever = SentenceTransformer(
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            device=self.device
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            "JungZoona/T3Q-qwen2.5-14b-v1.0-e3"
+        )
+
+        # IR prep: load, chunk, embed, index
+        self.prog_messenger.send("Processing contents of documents.")
         self.parent_docs = self._get_contents()
         self.child_chunks, self.child_to_parent = self._chunk_documents(self.parent_docs)
-        self.embeddings = self.retriever.encode(self.child_chunks, convert_to_tensor=False)
+        self.embeddings = self._encode_chunks(self.child_chunks)
         self.index = self._build_faiss_index(self.embeddings)
 
     def _connect_to_db(self):
-        return connect_to_mongo(self.mongo_user, self.mongo_password)
+        return connect_to_mongo(
+            os.getenv("MONGO_USER"), 
+            os.getenv("MONGO_PASSWORD")
+        )
 
     def _get_contents(self):
-        client, db, collection_dados, _ = self._connect_to_db()
         docs = []
-        for doc_id in self.list_doc_ids:
+        def fetch_doc(d_id):
             try:
-                oid = ObjectId(doc_id)
-                res = collection_dados.find_one({"_id": oid})
-                if res and res.get("Content"):
-                    docs.append(res["Content"])
-                else:
-                    self.prog_messenger.send(f"No content for ID: {doc_id}")
+                doc = self.coll.find_one(
+                    {"_id": ObjectId(d_id)}, 
+                    {"Content": 1}
+                )
+                return doc.get("Content") if doc else None
             except Exception as e:
-                self.prog_messenger.send(f"Error fetching {doc_id}: {e}")
-        JSONFileHandler(f"{self.directory_answers}/docs").save_results(docs)
+                self.prog_messenger.send(f"Error fetching {d_id}: {e}")
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            for content in pool.map(fetch_doc, self.list_doc_ids):
+                if content:
+                    docs.append(content)
+
+        os.makedirs(self.directory_answers, exist_ok=True)
+        with open(
+            os.path.join(self.directory_answers, "docs.json"), 
+            "w", encoding="utf-8"
+        ) as f:
+            json.dump(docs, f, ensure_ascii=False, indent=2)
+
         return docs
 
     def _chunk_documents(self, documents):
-        child_chunks, child_to_parent = [], []
-        for idx, doc in enumerate(documents):
+        chunks, mapping = [], []
+        step = self.chunk_size - self.chunk_overlap
+        for doc_idx, doc in enumerate(documents):
             tokens = doc.split()
-            for i in range(0, len(tokens), self.chunk_size - self.chunk_overlap):
-                chunk = " ".join(tokens[i:i + self.chunk_size])
-                child_chunks.append(chunk)
-                child_to_parent.append(idx)
-        return child_chunks, child_to_parent
+            for i in range(0, len(tokens), step):
+                chunks.append(" ".join(tokens[i : i + self.chunk_size]))
+                mapping.append(doc_idx)
+        return chunks, mapping
 
-    def _build_faiss_index(self, embeddings):
-        dim = embeddings.shape[1] if hasattr(embeddings, 'shape') else len(embeddings[0])
-        index = faiss.IndexFlatL2(dim)
-        index.add(np.array(embeddings).astype("float32"))
-        return index
+    def _encode_chunks(self, chunks):
+        arr = self.retriever.encode(
+            chunks,
+            convert_to_tensor=False,
+            batch_size=32,
+            show_progress_bar=True,
+            device=self.device
+        )
+        return np.array(arr, dtype="float32")
 
-    def _count_tokens(self, text):
+    def _build_faiss_index(self, embeddings_np):
+        dim = embeddings_np.shape[1]
+        idx = faiss.IndexFlatL2(dim)
+        idx.add(embeddings_np)
+        self.prog_messenger.send(f"FAISS index built with {embeddings_np.shape[0]} vectors.")
+        return idx
+
+    def _count_tokens(self, text: str) -> int:
         return len(self.tokenizer.encode(text, add_special_tokens=False))
 
-    def _retrieve_parent_docs(self, query):
-        vec = self.retriever.encode([query])[0]
-        D, I = self.index.search(np.array([vec]).astype("float32"), self.k)
-        parents = {self.child_to_parent[i] for i in I[0]}
-        return [self.parent_docs[i] for i in parents]
-
     def _build_context(self, parent_docs):
-        max_model_ctx = 4096
-        reserve = 1000
-        available = max_model_ctx - reserve
-        context_texts, total = [], 0
+        max_ctx, reserve = 4096, 1000
+        avail = max_ctx - reserve
+        ctx, total_tok = [], 0
         for doc in parent_docs:
             tok = self._count_tokens(doc)
-            if total + tok > available:
+            if total_tok + tok > avail:
                 break
-            context_texts.append(doc)
-            total += tok
-        return "\n\n".join(context_texts)
+            ctx.append(doc)
+            total_tok += tok
+        return "\n\n".join(ctx)
 
-    def get_summaries(self, user_query):
-        print("[GR] Generating with token-aware Parent-Document RAG...")
-        parents = self._retrieve_parent_docs(user_query)
-        context = self._build_context(parents)
+    def get_summaries(self, user_query: str, previous_responses: str):
+        # 1) Encode & search once
+        vec = self.retriever.encode([user_query], device=self.device)[0]
+        D, I = self.index.search(np.array([vec]), self.k)
+        parent_idxs = sorted({self.child_to_parent[i] for i in I[0]})
 
-        q = user_query if "?" in user_query else f"O que sabes sobre o tema '{user_query}'?"
+        # 2) Collect parent docs & their ORIGINAL dados _ids
+        parent_docs = [self.parent_docs[i] for i in parent_idxs]
+        dados_ids   = [self.list_doc_ids[i]  for i in parent_idxs]
+
+        # 3) Build the context for the LLM
+        context = self._build_context(parent_docs)
+
+        # 4) Fetch your metadata-key ID for each dados_id
+        metadata_keys = []
+        for d_id in dados_ids:
+            try:
+                meta = self.coll_meta.find_one(
+                    {"db_ID": ObjectId(d_id)}, 
+                    {"ID": 1}
+                )
+                if meta and meta.get("ID"):
+                    metadata_keys.append(str(meta["ID"]))
+                else:
+                    metadata_keys.append(f"(no metadata for {d_id})")
+            except Exception as e:
+                self.prog_messenger.send(f"Error fetching metadata for {d_id}: {e}")
+                metadata_keys.append(f"(error {d_id})")
+
+        # 5) Prepare & dump the prompt
         prompt = f"""
 És um assistente jurídico altamente qualificado, especializado em análise legal detalhada.
 
@@ -117,22 +177,27 @@ Deverás responder de forma exaustiva e meticulosa, fornecendo:
 - Exemplos concretos, quando apropriado
 
 Mantém uma linguagem técnica e clara, em Português de Portugal. Não assumes nem inventas factos não contidos no contexto.
-Se necessário, a resposta poderá conter tags html para headers, bold, italics e underline. 
+Se necessário, a resposta poderá apenas conter tags em html para headers, bold, italics e underline.
+
+Evita repetir isto:
+{previous_responses}
 
 Contexto:
 {context}
 
-Pergunta: {q}"""
+Pergunta: {user_query}"""
 
-        JSONFileHandler(f"{self.directory_answers}/llm_content.json").save_results(prompt)
-        headers = {"Content-Type": "application/json"}
-        data = {"model": self.model.value,
-                "messages": [{"role": "system", "content": prompt}],
-                "temperature": 0.7,
-                "max_tokens": self.max_tokens,
-                "top_p": 0.95,
-                "stream": False}
-        res = requests.post(self.LLM_url, json=data, headers=headers)
-        if res.status_code == 200:
-            return res.json()["choices"][0]["message"]["content"].strip()
-        return f"Error: {res.status_code} - {res.text}"
+        with open(
+            os.path.join(self.directory_answers, "llm_content.json"), 
+            "w", encoding="utf-8"
+        ) as f:
+            json.dump({"prompt": prompt}, f, ensure_ascii=False, indent=2)
+
+        # 6) Generate
+        summary = self.llm.generate(prompt) or "Error generating summary."
+
+        # 7) Return summary + your metadata keys as `document_ids`
+        return {
+            "summary": summary,
+            "document_ids": metadata_keys
+        }

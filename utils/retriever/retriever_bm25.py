@@ -1,13 +1,12 @@
 from rank_bm25 import BM25Okapi
 from collections import defaultdict
 import joblib
-import json
 import os
 
 from utils.json_file_handler import JSONFileHandler
 
 class BM25Retriever:
-    def __init__(self, model_file="./IR/models/bm25_model.pkl", directory_answers="IR/results"):
+    def __init__(self, directory_answers:str, model_file="./IR/models/bm25_model.pkl"):
         self.model_file = model_file
         self.model = None
         self.documents = None
