@@ -141,7 +141,7 @@ class WikiWord2VecRetriever:
                 "terms": query_text
             })
 
-        return sorted(similarities, key=lambda x: x["similarity_score"], reverse=True)[:top_n]
+        return sorted(similarities, key=lambda x: x["similarity_score"], reverse=True)#[:top_n]
 
 
     def find_most_similar(self, search_terms, documents, top_n):
@@ -154,8 +154,11 @@ class WikiWord2VecRetriever:
 
         self._cache_document_vectors()
 
-        full_query = " ".join(search_terms)
-        full_query = " ".join(dict.fromkeys(full_query.split()))
+        if type(search_terms) == list:
+            full_query = " ".join(search_terms)
+            full_query = " ".join(dict.fromkeys(full_query.split()))
+        else:
+            full_query = search_terms
 
         results = self.calculate_similarity_for_query(full_query, top_n)
                 

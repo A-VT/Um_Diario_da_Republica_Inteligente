@@ -76,7 +76,9 @@ def mongo_text_search(collection_metadados, search_terms, n_docs):
                 "_id": 1,
                 "db_ID": 1,
                 "Titulo": 1,
-                "Sumario": 1
+                "Sumario": 1,
+                "ID": 1,
+                "Url": 1
             }
         ).sort([("score", {"$meta": "textScore"})]).limit(n_docs)
 
@@ -87,6 +89,8 @@ def mongo_text_search(collection_metadados, search_terms, n_docs):
                 "db_ID": str(doc.get("db_ID", "")),
                 "Titulo": doc.get("Titulo", ""),
                 "Sumario": doc.get("Sumario", ""),
+                "ID": doc.get("ID", ""),
+                "Url": doc.get("Url", ""),
                 "score": doc.get("score", 0),
                 "terms" : search_string
             })

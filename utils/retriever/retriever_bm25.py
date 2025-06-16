@@ -62,7 +62,7 @@ class BM25Retriever:
         else:
             normalized_scores = [(s - min_score) / (max_score - min_score) for s in scores]
 
-        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_n]
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)#[:top_n] 
 
         return [
                 {

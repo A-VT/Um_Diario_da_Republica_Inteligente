@@ -36,9 +36,14 @@ def home():
 @app.route('/send', methods=['POST'])
 def send():
     data = request.get_json()
+    channel_id = data.get("channel_id")
+    if not channel_id:
+        return jsonify({"error": "Missing channel_id"}), 400
+
     request_data = comm_req.QueryRequest(**data)
 
-    def background_task():
+
+    def background_task(channel_id):
         with app.app_context():
             try:
                 dir_answers = os.getenv("DIR_RESULTS")
@@ -48,7 +53,7 @@ def send():
                 start_time = time.time()
 
                 # Setup IR phase
-                progress = ProgressMessenger()
+                progress = ProgressMessenger(channel = channel_id)
                 llm = LLMCommunicator(LLMModelType.QWEN2_5__14b, 6000, progress)
 
                 progress.set_module("IR")
@@ -93,7 +98,8 @@ def send():
                         "summary": summary_text,
                         "document_ids": doc_ids_list
                     },
-                    type="FINAL"
+                    type="FINAL",
+                    channel=channel_id
                 )
 
                 print(f"[TIMER] Total duration: {time.time() - start_time:.2f}s")
@@ -105,10 +111,11 @@ def send():
                         "summary": f"[_ERROR_] {str(e)}",
                         "document_ids": []
                     },
-                    type="FINAL"
+                    type="FINAL",
+                    channel=channel_id
                 )
 
-    thread = threading.Thread(target=background_task, daemon=True)
+    thread = threading.Thread(target=background_task, args=(channel_id,), daemon=True)
     thread.start()
     return jsonify({"status": "Processing started"}), 202
 

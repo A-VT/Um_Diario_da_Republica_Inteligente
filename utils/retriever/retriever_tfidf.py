@@ -49,7 +49,7 @@ class TfidfRetriever:
             return []
 
         similarities = cosine_similarity(query_vector, self.tfidf_matrix)[0]
-        top_indices = similarities.argsort()[-top_n:][::-1]
+        top_indices = similarities.argsort()[:][::-1]#[-top_n:][::-1]
         return [
             {
                 "id": self.documents[idx]["id"],

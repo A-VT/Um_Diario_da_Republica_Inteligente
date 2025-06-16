@@ -64,31 +64,33 @@ class SbertRetriever: #using L2 distance
         query_text = " ".join(dict.fromkeys(search_terms))
         query_embedding = self._embed_text(query_text).astype("float32").reshape(1, -1)
 
-        D, I = self.model.search(query_embedding, top_n)  # D: distances, I: indices
+        D, I = self.model.search(query_embedding, self.model.ntotal)
 
         distances = D[0]
         indices = I[0]
 
         min_dist = np.min(distances)
         max_dist = np.max(distances)
-        range_dist = max_dist - min_dist if max_dist != min_dist else 1.0  # avoid division by zero
+        range_dist = max_dist - min_dist if max_dist != min_dist else 1.0
 
-
-        results = []
-        for i, idx in enumerate(I[0]): #I[0]
+        all_results = []
+        for i, idx in enumerate(indices):
             doc = self.doc_id_map[idx]
             norm_score = 1.0 - ((distances[i] - min_dist) / range_dist)
-            results.append({
+            all_results.append({
                 "id": doc["id"],
                 "db_ID": doc["db_ID"],
                 "text": doc["search_content"],
-                "similarity_score": float(norm_score),  # invert distance for similarity feel - -D[0][i]
+                "similarity_score": float(norm_score),
                 "terms": search_terms
             })
+
+        all_results.sort(key=lambda x: x["similarity_score"], reverse=True)
+        top_results = all_results#[:top_n]
 
         print("Results obtained for FAISS.")
         file_handler = JSONFileHandler(f"{self.directory_answers}/faiss_results.json")
         file_handler.delete_results()
-        file_handler.save_results(results=results)
+        file_handler.save_results(results=top_results)
 
-        return results
+        return top_results

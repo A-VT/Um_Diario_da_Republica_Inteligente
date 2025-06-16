@@ -9,6 +9,7 @@ from utils.mongo_conn import connect_to_mongo
 from utils.retriever.process_queries import preprocess_query
 from utils.IR_direct_querying.IR_mongo_query import mongo_text_search
 from utils.IR_direct_querying.IR_elastic_query import elastic_query_search
+from collections import defaultdict
 from dotenv import load_dotenv
 import os
 
@@ -79,15 +80,15 @@ class IRSystem:
     def _retrieve_or_create_models(self, retrievers):
         for model_type, retriever in retrievers.items():
 
-            self.prog_messenger.send(f"Loading {model_type} model...")
+            self.prog_messenger.send(f"Processing with {model_type} model...")
             retriever.load_model()
             
             if retriever.model is None:
-                print(f"Building model for {model_type}...")
                 self.prog_messenger.send(f"Building model for {model_type} model...")
 
                 retriever.build_model(self.documents)
                 retriever.save_model()
+                self.prog_messenger.send(f"Processing with {model_type} model...")
 
         return retrievers
     
@@ -105,17 +106,21 @@ class IRSystem:
         retrievers = self._init_retrievers(user_models)
         retrievers = self._retrieve_or_create_models(retrievers)
 
-        search_terms = set()
-        search_terms.update(preprocess_query(user_query, user_autokeywords))
-        self.search_terms = list(set(search_terms))
+        self.search_terms = None
+        if user_autokeywords == True:
+            search_terms = set()
+            search_terms.update(preprocess_query(user_query, user_autokeywords))
+            self.search_terms = list(set(search_terms))
+        else:
+            self.search_terms = user_query
 
         self._create_analysis_file("search_terms.json", self.search_terms)
 
-        results = []
-
+        #results = []
+        all_model_results = {}
         for model_type, retriever in retrievers.items():
             
-            self.prog_messenger.send(f"Gathering results for {model_type} model.")
+            #self.prog_messenger.send(f"Gathering results for {model_type} model.")
 
             if model_type in {ModelType.TF_IDF, ModelType.BM25, ModelType.SBERT}:
                 temp_results = retriever.find_most_similar(self.search_terms, self.n_results)
@@ -126,49 +131,105 @@ class IRSystem:
                 self.prog_messenger.send(f"Cannot handle model {model_type}.")
                 continue
 
+            
             self.prog_messenger.send(f"Received temporary results from {model_type}.")
             
             # Aggregate results
-            results = self._add_results(results, temp_results, model_type)
+            all_model_results[model_type.name] = temp_results
+            #results = self._add_results(results, temp_results, model_type)
 
         # Balance results by average score and return the top results
-        self._global_balance_results(results)
-        self.prog_messenger.send(f"Balanced final results.")
+        results = self._aggregate_results(all_model_results, self.n_results, user_models)
+        #self._global_balance_results(results)
+        #self.prog_messenger.send(f"Balanced final results.")
+        
 
         #comparative searches
         self._mongo_direct_querying()
         self._elastic_direct_querying()
 
         return results
+    
 
-    def _add_results(self, results, temp_results, model_type):
-        results_dict = {i["id"]: i for i in results}
-        for temp in temp_results:
-            if temp["id"] in results_dict:
-                results_dict[temp["id"]]["similarity_score"][model_type.value] = temp["similarity_score"]
+    def _compute_weights(self, user_models):
+        model_names = sorted([m.name for m in user_models])
+
+        if len(model_names) == 1:
+            return {model_names[0]: 1.0}
+
+        else:
+            sparse_models = {"TF_IDF", "BM25"}
+            mid_dense_models = {"WIKI_WORD2VEC", "WORD2VEC"}
+            high_dense_models = {"SBERT"}
+
+            weights = {}
+            total = 0
+
+            for model in model_names:
+                if model in sparse_models:
+                    weights[model] = 1.0
+                elif model in mid_dense_models:
+                    weights[model] = 0.8
+                elif model in high_dense_models:
+                    weights[model] = 1.2
+                else:
+                    weights[model] = 1.0
+
+                total += weights[model]
+
+            for model in weights: # Normalization to sum to 1
+                weights[model] /= total
+
+            return weights
+
+
+    def _aggregate_results(self, all_model_results, top_k, user_models, weights=None):
+        weights = self._compute_weights(user_models)
+        
+        scores_by_id = defaultdict(lambda: {
+            "normalized_scores": {},
+            "terms": None,
+            "text": None,
+            "db_ID": None,
+            "id": None
+        })
+
+        for model_name, model_results in all_model_results.items():
+            for r in model_results:
+                doc_id = r["id"]
+                scores_by_id[doc_id]["text"] = r.get("text")
+                scores_by_id[doc_id]["normalized_scores"][model_name] = r["similarity_score"]
+                scores_by_id[doc_id]["db_ID"] = r.get("db_ID")
+                scores_by_id[doc_id]["terms"] = r.get("terms")
+
+        aggregated = []
+        for doc_id, entry in scores_by_id.items():
+            scores = entry["normalized_scores"]
+            terms = entry["terms"]
+            db_ID = entry["db_ID"]
+            text = entry["text"]
+            if weights:
+                weighted_avg = sum(scores[m] * weights.get(m, 1) for m in scores) / sum(weights.get(m, 1) for m in scores)
             else:
-                temp["similarity_score"] = {model_type.value: temp["similarity_score"]}
-                results_dict[temp["id"]] = temp
-            temp["terms"] = self.search_terms
-        return list(results_dict.values())
+                weighted_avg = sum(scores.values()) / len(scores)
 
-    def _global_balance_results(self, results):
-        for item in results:
-            scores = item.get("similarity_score", {}).values()
-            item["global_average_score"] = sum(scores) / len(scores) if scores else 0
-            item["global_confidence"] = len(scores) / self.n_models
-            item["global_balanced_score"] = item["global_average_score"] * item["global_confidence"]
+            confidence = len(scores) / len(all_model_results)
+            final_score = weighted_avg * confidence
 
-            for key in ["scores", "avg_score", "confidence"]:
-                item.pop(key, None)
-        results.sort(key=lambda x: x["global_balanced_score"], reverse=True)
-        return results[:self.n_results]
+            aggregated.append({
+                "id": doc_id,
+                "db_ID": db_ID,
+                "text": text,
+                "global_score": final_score,
+                "confidence": confidence,
+                "individual_scores": scores,
+                "terms": terms
+            })
+
+        return sorted(aggregated, key=lambda x: x["global_score"], reverse=True)[:top_k]
 
     def get_result_ids(self, results):
         return [result["db_ID"] for result in results if "db_ID" in result]
-
-
-
 
     def _mongo_direct_querying(self):
         self.prog_messenger.send(f"Performing direct MongoDB search...")

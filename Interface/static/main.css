@@ -154,3 +154,7 @@ button:hover {
     white-space: pre-wrap;
     color: var(--color-dark-1);
 }
+
+.references {
+    margin-top: 10px;
+}

@@ -61,16 +61,20 @@
     </section>
 
     <script>
-        const evtSource = new EventSource("/stream");
+        const channelId = crypto.randomUUID();
+        //const evtSource = new EventSource("/stream");
+        const evtSource = new EventSource(`/stream?channel=${channelId}`);
 
         evtSource.addEventListener("IR", (event) => {
             const data = JSON.parse(event.data);
             document.querySelector(".progress").innerText += data.message + "\n";
+            document.getElementById("references").style.display = "none";
         });
 
         evtSource.addEventListener("GR", (event) => {
             const data = JSON.parse(event.data);
             document.querySelector(".progress").innerText += data.message + "\n";
+            document.getElementById("references").style.display = "none";
         });
 
         evtSource.addEventListener("FINAL", (event) => {
@@ -78,10 +82,11 @@
             const data = JSON.parse(event.data);
 
             document.getElementById("response").innerText = data.summary;
-
+            
             // fill the references (now document IDs)
             const refDiv = document.getElementById("references");
-            refDiv.innerHTML = "<b> Referências </b>";
+            refDiv.style.display = "block"; // Show now
+            refDiv.innerHTML = "<br><b> Referências Consultadas </b>";
             if (Array.isArray(data.document_ids)) {
                 const ul = document.createElement("ul");
                 data.document_ids.forEach(id => {
@@ -130,6 +135,7 @@
             }
 
             const payload = {
+                channel_id: channelId,
                 text: text,
                 models: models,
                 n_docs: parseInt(n_docs),

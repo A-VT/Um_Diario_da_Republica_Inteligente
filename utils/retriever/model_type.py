@@ -29,3 +29,5 @@ class ModelType(str, Enum):
             ModelType.SBERT: SbertRetriever()
         }
         return retriever_classes[self]()
+
+
